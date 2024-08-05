@@ -1,0 +1,64 @@
+library(ggpubr)
+library(SingleCellExperiment)
+library(jsonlite)
+library(optparse)
+library(DESeq2)
+library(tidyr)
+library(parallel)
+set.seed(10222023)
+setwd("/gpfs/gibbs/pi/zhao/xs282/validation/")
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/IRLS_CSCORE/CscoreSimplifiedIRLS.R")
+source("/gpfs/gibbs/pi/zhao/xs282/validation/cscore_real_data_function.R")
+
+
+# ROSMAP-------------------------------------------------------------------
+ROSMAP_oli_ct <- readRDS("mean_cor/simu/ROSMAP_NC_Oli_cscore_cor_NB_simu.rds")
+ROSMAP_ori_ests <- readRDS("marginal_fit/ROSMAP_NC_Oli_cscore_cor.rds")
+gene_name <- rownames(ROSMAP_ori_ests$est)
+
+# cscore
+ROSMAP_cscore <- CscoreSimplifiedIRLS(ROSMAP_oli_ct[gene_name, ] %>% as.matrix %>% t,
+                                 colSums(ROSMAP_oli_ct), covar_weight="regularized")
+ROSMAP_cscore$est <- post_process_est(ROSMAP_cscore$est)
+saveRDS(ROSMAP_cscore, "mean_cor/simu/ROSMAP_NC_Oli_simu_cscore.rds")
+
+
+# sctransfrom
+source("/gpfs/gibbs/pi/zhao/xs282/validation/coexp_function.R")
+sc_obj <- CreateSeuratObject(counts = ROSMAP_oli_ct)
+sc_obj <- NormalizeData(sc_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+sc.sel <- subset(sc_obj, features = gene_name)
+ROSMAP_sct_prn <- sct_cor(sc_obj, sc.sel, gene_name)
+saveRDS(ROSMAP_sct_prn, "mean_cor/simu/ROSMAP_NC_Oli_simu_sct.rds")
+
+
+## analytic pearson
+ROSMAP_ana_prn <- ana_prn(ROSMAP_oli_ct, gene_name, colSums(ROSMAP_oli_ct))
+saveRDS(ROSMAP_ana_prn, "mean_cor/simu/ROSMAP_NC_Oli_simu_ana_prn.rds")
+
+# PNAS-------------------------------------------------------------------
+PNAS_oli_ct <- readRDS("mean_cor/simu/PNAS_NC_Oli_cscore_cor_NB_simu.rds")
+PNAS_ori_ests <- readRDS("marginal_fit/PNAS_NC_Oli_cscore_cor.rds")
+gene_name <- rownames(PNAS_ori_ests$est)
+
+# cscore
+PNAS_cscore <- CscoreSimplifiedIRLS(PNAS_oli_ct[gene_name, ] %>% as.matrix %>% t,
+                                      colSums(PNAS_oli_ct), covar_weight="regularized")
+PNAS_cscore$est <- post_process_est(PNAS_cscore$est)
+saveRDS(PNAS_cscore, "mean_cor/simu/PNAS_NC_Oli_simu_cscore.rds")
+
+
+# sctransfrom
+source("/gpfs/gibbs/pi/zhao/xs282/validation/coexp_function.R")
+sc_obj <- CreateSeuratObject(counts = PNAS_oli_ct)
+sc_obj <- NormalizeData(sc_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+sc.sel <- subset(sc_obj, features = gene_name)
+PNAS_sct_prn <- sct_cor(sc_obj, sc.sel, gene_name)
+saveRDS(PNAS_sct_prn, "mean_cor/simu/PNAS_NC_Oli_simu_sct.rds")
+
+
+## analytic pearson
+PNAS_ana_prn <- ana_prn(PNAS_oli_ct, gene_name, colSums(PNAS_oli_ct))
+saveRDS(PNAS_ana_prn, "mean_cor/simu/PNAS_NC_Oli_simu_ana_prn.rds")
+
+

@@ -1,0 +1,37 @@
+"0","library(dplyr)"
+"2","
+Attaching package: ‘dplyr’
+
+"
+"2","The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+"
+"2","The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+"
+"0","library(Seurat)"
+"2","Registered S3 method overwritten by 'data.table':
+  method           from
+  print.data.table     
+"
+"2","Registered S3 method overwritten by 'htmlwidgets':
+  method           from         
+  print.htmlwidget tools:rstudio
+"
+"2","Attaching SeuratObject
+"
+"2","Seurat v4 was just loaded with SeuratObject v5; disabling v5 assays and
+validation routines, and ensuring assays work in strict v3/v4 compatibility
+mode
+"
+"0","library(patchwork)"
+"0",""
+"0","# Load the PBMC dataset"
+"0","pbmc.data <- Read10X(data.dir = ""/brahms/mollag/practice/filtered_gene_bc_matrices/hg19/"")"
+"2","Error in Read10X(data.dir = ""/brahms/mollag/practice/filtered_gene_bc_matrices/hg19/"") : 
+  Directory provided does not exist
+"

@@ -1,0 +1,921 @@
+
+# simulate a small network with AR1 correlation containing only 0 and 0.5
+# ncor_gene=500, ncell=1000, ngene=20000
+library(tidyverse)
+library(ggplot2)
+library(ggridges)
+library(optparse)
+library(Seurat)
+library(igraph)
+library(matrixcalc)
+library(Matrix)
+library(truncnorm)
+library(propr)
+library(stringr)
+library(ggpubr)
+library(gam)
+
+prefix <- "small_top5000_05"
+cor_type <- "AR1"
+seed <- 5102022
+set.seed(seed)
+
+ngene <- 20000
+ncell <- 1000
+ncor_gene <- 5000
+ntop_gene_uncor <- 0
+constant_sequencing <- F
+ind <- F
+
+# ################## load read data and get sequencing  depth ####################
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/IRLS_CSCORE/CscoreSimplifiedIRLS.R")
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/MoM.R")
+# sc_obj <- readRDS("/gpfs/gibbs/pi/zhao/cs2629/AD_Nancy/seurat_obj_cell_type_labelled.rds")
+# count_ex <- as.matrix(sc_obj[["RNA"]]@counts[, which(sc_obj$cell_type=="Ex")])
+# print(dim(count_ex))
+# seq_depth_ex <- colSums(count_ex)
+
+seq_depth_ex <- readRDS("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/simulation/seq_depth_ex.rds")
+count_ex <- readRDS("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/simulation/count_ex.rds")
+
+########################## set experiment parameters ###########################
+cell_name <- paste0("Cell", c(1:ncell))
+
+# sample sequence depth from read data (EX)
+if (constant_sequencing){
+  seq_depth <- rep(5000,ncell)
+} else{
+  seq_depth <- sample(seq_depth_ex, ncell)
+}
+
+seq_plot1 <- ggplot()+geom_histogram(aes(x=seq_depth_ex))+xlab("Sequence Depth")+
+  labs(title="Sequence depth of excitatory neurons from real data")
+seq_plot2 <- ggplot()+geom_histogram(aes(x=seq_depth))+xlab("Sequence Depth")+
+  labs(title="Sampled sequence depth")
+seq_plot1+seq_plot2
+
+# sample the top ngene mean as the mean in simulation
+marginal_fit_fn <- '/gpfs/gibbs/pi/zhao/xs282/coexp-sc/output/marginal_fit/PNAS_Ex_marginal_fit.rds'
+vanilla_ex <- readRDS(marginal_fit_fn)
+vanilla_ex <- vanilla_ex[order(vanilla_ex$mu, decreasing = T),]
+log10mu <- vanilla_ex$mu[1:ngene]
+gene_name <- vanilla_ex$gene[1:ngene]
+names(log10mu) <- gene_name
+mu <- 10^log10mu
+sum(mu)
+
+# use the sampled mean and the trend between mean and alpha to get corresponding alpha
+km_Ex5 <- readRDS('/gpfs/gibbs/pi/zhao/xs282/coexp-sc/output/marginal_fit/PNAS_Ex_ks_fit_5.rds')
+fitted_trend <- data.frame(mu=km_Ex5$x, alpha=km_Ex5$y)
+log10alpha <- rep(NA,ngene)
+names(log10alpha) <- gene_name
+for (i in 1:ngene){
+  idx <- which.min(abs(log10mu[i]-fitted_trend$mu))
+  log10alpha[i] <- fitted_trend$alpha[idx]
+}
+alpha <- 10^log10alpha
+
+# get beta based on mu=alpha*beta
+beta <- mu/alpha
+
+###### generate independent expression matrix based on gamma(alpha, beta) ######
+exp_mat <- matrix(rgamma(ngene*ncell, shape = rep(alpha,ncell),
+                         scale = rep(beta,ncell)), nrow = ngene)
+colnames(exp_mat) <- cell_name
+rownames(exp_mat) <- gene_name
+
+##################### generate correlated gene expression ######################
+sample_idx <- 1:ncor_gene
+cor_gene <- vanilla_ex$gene[sample_idx]
+cor_alpha <- alpha[cor_gene]
+cor_beta <- beta[cor_gene]
+if (!ind){
+  # generate AR(1) correlation matrix for ncor_gene correlated genes
+  rho <- 0.5
+  cor_mat <- abs(matrix(c(0:(ncor_gene-1)), nrow=ncor_gene, ncol=ncor_gene)-
+                   matrix(c(0:(ncor_gene-1)), nrow=ncor_gene, ncol=ncor_gene, byrow = T))
+  cor_mat <- rho^cor_mat
+
+  band_idx <- 2
+  cor_mat[abs(row(cor_mat)-col(cor_mat))>(band_idx-1)] <- 0
+
+  rownames(cor_mat) <- cor_gene
+  colnames(cor_mat) <- cor_gene
+
+  # copula
+  cor_mat_up <- chol(cor_mat)
+  copula <- matrix(rnorm(ncor_gene*ncell),nrow = ncor_gene)
+  copula <- pnorm(t(cor_mat_up)%*%copula)
+
+  cor_exp_matrix <- matrix(NA, nrow=ncor_gene, ncol=ncell)
+  rownames(cor_exp_matrix) <- cor_gene
+  for (i in 1:ncor_gene){
+    cor_exp_matrix[i,] <- qgamma(copula[i,], shape=cor_alpha[i], scale=cor_beta[i])
+  }
+
+  # replace the value for correlated gene in the independent matrix
+  exp_mat[cor_gene,] <- cor_exp_matrix
+}
+
+################ generate count matrix by draw from poisson ####################
+seq_depth_matrix <- matrix(seq_depth, nrow = ngene, ncol = ncell, byrow = T)
+pois_para <- exp_mat*seq_depth_matrix
+count_mat <- matrix(rpois(ngene*ncell, lambda = c(pois_para)), nrow=ngene)
+colnames(count_mat) <- cell_name
+rownames(count_mat) <- gene_name
+
+########################## save simulation result ##############################
+path <- paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/")
+if(!file.exists(path)){
+  dir.create(path,recursive = T)
+}
+
+saveRDS(count_mat, paste0(path,'simu_network_count_data.rds'))
+saveRDS(exp_mat, paste0(path,'simu_network_exp_data.rds'))
+saveRDS(alpha, paste0(path,'alpha.rds'))
+saveRDS(mu, paste0(path,'mu.rds'))
+saveRDS(seq_depth, paste0(path,'seq_depth.rds'))
+saveRDS(cor_gene,paste0(path,'cor_gene.rds'))
+if (!ind){
+  saveRDS(cor_mat, paste0(path,'true_correlation.rds'))
+}
+
+############################# read simulated data ##############################
+path <- paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/")
+
+# read simulated expression matrix and true correlation matrix
+count_mat <- readRDS(paste0(path,'simu_network_count_data.rds'))
+if (!ind){
+  cor_mat <- readRDS(paste0(path,'true_correlation.rds')) 
+}
+
+sc_obj <- CreateSeuratObject(counts = count_mat)
+sc_obj
+sc_obj <- NormalizeData(sc_obj, normalization.method = "LogNormalize", scale.factor = 10000)
+
+# select genes are correlated in the simulation
+sel.gene <- readRDS(paste0(path,'cor_gene.rds'))
+sc.sel <- subset(sc_obj, features = sel.gene)
+dim(sc.sel@assays$RNA@counts)
+
+################################### loccsn #####################################
+write.csv(as.matrix(sc.sel@assays$RNA@data),paste0(path,"logNormalized.csv"))
+locsn_data <- read.csv(paste0(path,"logNormalized.csv"),row.names = 1)
+tri = upper.tri(cor_mat)
+idxs = which(tri, arr.ind = T)
+int = data.frame(id1 = rownames(cor_mat)[idxs[,1]], 
+                 id2 = rownames(cor_mat)[idxs[,2]], 
+                 correlation = cor_mat[tri])
+cor_pair <- int[int$correlation!=0,]
+
+if(!file.exists(paste0(path,"loccsn/"))){
+  dir.create(paste0(path,"loccsn/"),recursive = T)
+}
+
+for (i in 1:nrow(cor_pair)){
+  subdata <- locsn_data[c(cor_pair$id1[i],cor_pair$id2[i]),]
+  write.csv(subdata,paste0(path,"loccsn/",cor_pair$id1[i],"_",cor_pair$id2[i],".csv"))
+}
+
+# prepare for dsq job
+path_d <- paste0("ml miniconda; conda activate notebook_env; python /gpfs/gibbs/pi/zhao/xs282/coexp-sc/simulation/network_simulation/locCSN_coexp.py ",cor_type, "_", prefix," ")
+job <- matrix(nrow=nrow(cor_pair),ncol = 1)
+for (i in 1:nrow(cor_pair)){
+  job[i,1] <- paste0(path_d,cor_pair$id1[i],"_",cor_pair$id2[i])
+}
+
+write.table(job, file = "/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/joblist_loccsn.txt", sep = "\t",
+            row.names = F, col.names = F, quote = F)
+
+# create correlation matrix after finishing dsq job
+files = list.files(paste0(path,"loccsn/result/"), full.names = T)
+loccsn <- matrix(0,ncor_gene,ncor_gene)
+colnames(loccsn) <- colnames(cor_mat)
+rownames(loccsn) <- rownames(cor_mat)
+
+for (file in files){
+  pair <- str_split(gsub("\\.csv", "", basename(file)),"_")[[1]]
+  my <- read.csv(file,header = F,sep = " ")
+  loccsn[pair[1],pair[2]] <- my[1,2]
+}
+loccsn <- loccsn+t(loccsn)
+diag(loccsn) <- 1
+saveRDS(loccsn, paste0(path,"loccsn.rds"))
+
+############################### propr ##########################################
+pr <- propr(counts = t(count_mat), metric = "rho", select =sel.gene, alpha = NA,p = 100)
+saveRDS(pr@matrix, paste0(path,"propr_pr.rds"))
+
+######################### save object for normalisr ############################
+sel.count <- as.matrix(sc.sel[['RNA']]@counts)
+all.count <- as.matrix(sc_obj[['RNA']]@counts)
+
+if(!file.exists(paste0(path,"normalisr/data/reads/"))){
+  dir.create(paste0(path,"normalisr/data/reads/"),recursive = T)
+}
+
+write.table(sel.count, file = paste0(path,"normalisr/data/reads/sel.count.tsv"), row.names=T, sep="\t")
+write.table(all.count, file = paste0(path,"normalisr/data/reads/all.count.tsv"), row.names=T, sep="\t")
+
+################################# sctransform ##################################
+# remotes::install_github("satijalab/sctransform", ref="develop")
+# if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+# BiocManager::install("glmGamPoi", lib="~/project/R/4.1/")
+
+# ncells: Number of subsampling cells used to build NB regression; default is 5000.
+#         Here we use all cells (5000).
+# variable.features.n: Use this many features as variable features after ranking
+#                      by residual variance; default is 3000. Only applied if
+#                      residual.features is not set.
+# n_genes:https://github.com/satijalab/sctransform/issues/124
+
+dimension <- dim(sc.sel@assays$RNA@counts)
+
+sc.sct <- SCTransform(sc_obj,method = "glmGamPoi",ncells=dimension[2],
+                      residual.features = sel.gene,return.only.var.genes = F)
+
+SCT_scaled_res <- sc.sct[["SCT"]]@scale.data
+SCT_scaled_res <- SCT_scaled_res[match(sel.gene, rownames(SCT_scaled_res)),]
+all(rownames(SCT_scaled_res) == sel.gene)
+
+sc.sct[["my_cluster"]] <- 1
+meta.data <- sc.sct@meta.data
+sct.data <- t(as.matrix(SCT_scaled_res))
+sct_prn <- cor(sct.data, method = "pearson")
+
+saveRDS(sct_prn, paste0(path,"sctransform_pearson_cor.rds"))
+saveRDS(sc.sct, paste0(path,"sc_sct.rds"))
+
+########################### NoiseRegularization ################################
+source("/gpfs/ysm/project/zhao/xs282/scCoexpression/coexp-sc/simulation/NoiseRegularizationCode.R") # from https://github.com/RuoyuZhang/NoiseRegularization/blob/master/code/code.R
+
+# Calculate quantile
+# if the min expression of gene<0, then add abs(min(expression)) to calculate the quantile
+sct.quantile.mat <- calculate_quantile_matrix.bygene(m=sct.data,gene.names = NULL,expr.cell.list = NULL,
+                                                     quantile.list = c(seq(0.01,0.15,0.01),seq(0.2,0.7,0.1),seq(0.71,1,0.01)))
+
+# Begin to perform noise regularization
+all.genes <- colnames(sct.data)
+all.cells <- rownames(sct.data)
+# column name in meta data frame to indicate cell clusters, here we use the numbered cluster names
+cluster_column<- 'my_cluster'
+
+# spearman
+# specify the outdir to save gene gene correlation results
+out.dir.sct.spr <- paste0(path,"noise/")
+dir.create(out.dir.sct.spr, recursive = T, showWarnings = F)
+
+# for each cluster, adding different levels of noise (indicated by q.list)
+q.list <- c('1%')
+
+# begin to run gene gene correlation in cluster ~4min
+gc()
+flush.console()
+# if the 1% quantile is less than max.low=0.1, then unif(0,0.1)
+frac.0.15 <- noise.regularization.cmp(m=sct.data, gene.list=all.genes, max.low=0.1,
+                                      quantile.mat = sct.quantile.mat,
+                                      quantile.list = q.list,title='sct.bygene',
+                                      out.dir=paste0(out.dir.sct.spr,'/cluster',1,'/'),
+                                      ncore = 1,nblocks=10,seed = seed)
+
+#Read gene gene correlaiton results, before and after Noise Regularization.
+cor.dir <- paste0(path,"noise")
+# edit in NoiseRegularizationCode line 546: if (i==min(clusters)){cor.df = tibble(pair_name = this.cor.df$pair_name)}
+# Gene gene correlation after noise regularization
+cor.df.1p <- readRDS(paste0(cor.dir,'/cluster',1, '/', 'sct','.bygene.','1p','.cor.df.rds'))
+
+library(tidyr)
+# convert result to a correlation matrix
+# create a data contains all values of the correlation matrix
+cor.df.1p.den1 <- separate(cor.df.1p,pair_name, c("gene1", "gene2"), sep = "_")
+cor.df.1p.den1 <- cor.df.1p.den1[c('gene1', 'gene2', 'spearman')]
+
+cor.df.1p.den2 <- cor.df.1p.den1
+names(cor.df.1p.den2) <- c('gene2', 'gene1', 'spearman')
+cor.df.1p.den2 <- cor.df.1p.den2[c('gene1', 'gene2', 'spearman')]
+
+cor.df.1p.den3 <- data.frame(gene1=all.genes, gene2=all.genes, spearman=rep(1,length(all.genes)))
+
+cor.df.1p.den <- rbind(cor.df.1p.den1,cor.df.1p.den2,cor.df.1p.den3)
+# ordered based on the gene name
+cor.df.1p.den <- cor.df.1p.den[order(cor.df.1p.den$gene1, cor.df.1p.den$gene2),]
+
+# create the correlation matrix
+cor.df.1p.mat <- matrix(cor.df.1p.den$spearman,nrow = length(all.genes), ncol = length(all.genes),byrow = T)
+rownames(cor.df.1p.mat) <- unique(cor.df.1p.den$gene1)
+colnames(cor.df.1p.mat) <- unique(cor.df.1p.den$gene2)
+
+saveRDS(cor.df.1p.mat, paste0(path,"noise_spearman_cor.rds"))
+
+###################################### spqn ####################################
+# if (!require("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install("spqn")
+library(spqn)
+spqn.data <- as.matrix(sc.sel@assays$RNA@data)
+ave_logrpkm <- rowMeans(spqn.data)
+
+# pearson
+cor_m_pearson <- cor(t(spqn.data),method = "pearson")
+cor_m_pearson_spqn <- normalize_correlation(cor_m_pearson, ave_exp=ave_logrpkm, ngrp=20, size_grp=300, ref_grp=18)
+colnames(cor_m_pearson_spqn) <- colnames(cor_m_pearson)
+rownames(cor_m_pearson_spqn) <- rownames(cor_m_pearson)
+
+saveRDS(cor_m_pearson_spqn, paste0(path,'spqn_pearson_cor.rds'))
+saveRDS(cor_m_pearson, paste0(path,'pearson_cor.rds'))
+
+cor_m_spr <- cor(t(spqn.data),method = "spearman")
+saveRDS(cor_m_spr, paste0(path,'spearman_cor.rds'))
+
+## our method
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/MoM.R")
+seq_depth <- readRDS(paste0(path,'seq_depth.rds'))
+
+our_ests_ori <- MoM_net(count_mat[sel.gene,] %>% as.matrix %>% t, seq_depth, 'Indep')
+saveRDS(our_ests_ori$p_value, paste0(path,'our_pvalue.rds'))
+saveRDS(our_ests_ori$est, paste0(path,'our_est.rds'))
+
+## our method (new)
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/IRLS_CSCORE/CscoreSimplifiedIRLS.R")
+our_ests <- CscoreSimplifiedIRLS(count_mat[sel.gene,] %>% as.matrix %>% t, 
+                                 seq_depth, covar_weight="regularized")
+saveRDS(our_ests$p_value, paste0(path,'our_pvalue_new_regu.rds'))
+saveRDS(our_ests$est, paste0(path,'our_est_new_regu.rds'))
+
+our_ests2 <- CscoreSimplifiedIRLS(count_mat[sel.gene,] %>% as.matrix %>% t, 
+                                 seq_depth, covar_weight="original")
+saveRDS(our_ests2$p_value, paste0(path,'our_pvalue_new_ori.rds'))
+saveRDS(our_ests2$est, paste0(path,'our_est_new_ori.rds'))
+
+############################# analytic pearson #############################
+start.ana <- Sys.time()
+beta0 <- rep(NA, ncol(sel_count))
+resi <- sel_count
+theta <- 100
+for (i in 1:ncol(sel_count)){
+  poi_r <- glm(sel_count[,i] ~ 1, family = "poisson", offset=log(seq_depth))
+  summ <- summary(poi_r)
+  beta0[i] <- summ$coefficients[1,1]
+  mu_fit <- poi_r$fitted.values
+  resi[,i] <- (resi[,i]-mu_fit)/sqrt(mu_fit+mu_fit^2/theta)
+}
+sum(abs(resi)>sqrt(ncell))
+cor_est <- cor(resi, method = "pearson")
+end.ana <- Sys.time()
+end.ana-start.ana
+saveRDS(cor_est,paste0(path,"/analyticPrn.rds"))
+
+
+############################ visualization #####################################
+######################## plot only need to run #################################
+source("/gpfs/gibbs/pi/zhao/xs282/coexp-sc/simulation/network_simulation/CSCORE_preprocess.R")
+
+path <- paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/")
+mu <- readRDS(paste0(path,'/mu.rds'))
+true_cor <- readRDS(paste0(path,'true_correlation.rds'))
+sel.gene <- readRDS(paste0(path,'cor_gene.rds'))
+
+# new methods
+ana_prn <- readRDS(paste0(path,'/analyticPrn.rds'))
+ana_prn <- ana_prn[sel.gene,sel.gene]
+
+# read estimations
+sctransform_prn <- readRDS(paste0(path,'/sctransform_pearson_cor.rds'))
+sctransform_prn <- sctransform_prn[sel.gene,sel.gene]
+
+noise_spr <- readRDS(paste0(path,'/noise_spearman_cor.rds'))
+noise_spr <- noise_spr[sel.gene,sel.gene]
+
+spqn_prn <- readRDS(paste0(path,'/spqn_pearson_cor.rds'))
+spqn_prn <- spqn_prn[sel.gene,sel.gene]
+is.positive.definite(spqn_prn)
+ev <- eigen(spqn_prn)
+
+normalisr_prn <- as.matrix(read.csv(paste0(path,'/normalisr_prn.csv'), row.names = 1))
+normalisr_prn <- normalisr_prn[sel.gene,gsub("-",".",sel.gene)]
+
+propr <- readRDS(paste0(path,'/propr_pr.rds'))
+propr <- propr[sel.gene,sel.gene]
+is.positive.definite((propr+t(propr))/2)
+
+our_pvalue <- readRDS(paste0(path,'/our_pvalue.rds'))
+our_pvalue <- our_pvalue[sel.gene,sel.gene]
+
+our_est <- readRDS(paste0(path,'/our_est.rds'))
+our_est <- our_est[sel.gene,sel.gene]
+our_est <- pre_process_cor_est(our_est)$est
+
+our_pvalue_new_regu <- readRDS(paste0(path,'/our_pvalue_new_regu.rds'))
+our_pvalue_new_regu <- our_pvalue_new_regu[sel.gene,sel.gene]
+
+our_est_new_regu <- readRDS(paste0(path,'/our_est_new_regu.rds'))
+our_est_new_regu <- our_est_new_regu[sel.gene,sel.gene]
+our_est_new_regu <- pre_process_cor_est(our_est_new_regu)$est
+
+our_pvalue_new_ori <- readRDS(paste0(path,'/our_pvalue_new_ori.rds'))
+our_pvalue_new_ori <- our_pvalue_new_ori[sel.gene,sel.gene]
+
+our_est_new_ori <- readRDS(paste0(path,'/our_est_new_ori.rds'))
+our_est_new_ori <- our_est_new_ori[sel.gene,sel.gene]
+our_est_new_ori <- pre_process_cor_est(our_est_new_ori)$est
+
+spearman <- readRDS(paste0(path,'/spearman_cor.rds'))
+spearman <- spearman[sel.gene,sel.gene]
+
+pearson <- readRDS(paste0(path,'/pearson_cor.rds'))
+pearson <- pearson[sel.gene,sel.gene]
+
+loccsn <- readRDS(paste0(path,'/loccsn.rds'))
+loccsn <- loccsn[sel.gene,sel.gene]
+
+# expression level matrix
+mu_col <- matrix(mu[sel.gene],(ntop_gene_uncor+ncor_gene),
+                 (ntop_gene_uncor+ncor_gene),byrow = T)
+mu_row <- matrix(mu[sel.gene],(ntop_gene_uncor+ncor_gene),
+                 (ntop_gene_uncor+ncor_gene))
+
+# calculate p-value for each estimate
+estimate <- data.frame(sct=sctransform_prn[upper.tri(sctransform_prn, diag = FALSE)],
+                       noise=noise_spr[upper.tri(noise_spr, diag = FALSE)],
+                       spqn=spqn_prn[upper.tri(spqn_prn, diag=F)],
+                       prn=pearson[upper.tri(pearson, diag=F)],
+                       spr=spearman[upper.tri(spearman, diag=F)],
+                       our=-log10(our_pvalue[upper.tri(our_pvalue, diag=F)]),
+                       our_est=our_est[upper.tri(our_est, diag=F)],
+                       propr=propr[upper.tri(propr, diag=F)],
+                       normalisr=normalisr_prn[upper.tri(normalisr_prn, diag=F)],
+                       loccsn=loccsn[upper.tri(loccsn, diag=F)],
+                       our_new_regu=-log10(our_pvalue_new_regu[upper.tri(our_pvalue_new_regu, diag=F)]),
+                       our_est_new_regu=our_est_new_regu[upper.tri(our_est_new_regu, diag=F)],
+                       our_new_ori=-log10(our_pvalue_new_ori[upper.tri(our_pvalue_new_ori, diag=F)]),
+                       our_est_new_ori=our_est_new_ori[upper.tri(our_est_new_ori, diag=F)],
+                       ana_prn=ana_prn[upper.tri(ana_prn, diag = FALSE)]
+)
+estimate$vtrue <- true_cor[upper.tri(true_cor, diag=F)]
+estimate$true <- ifelse(estimate$vtrue!=0,1,0)
+estimate$mu_col <- mu_col[upper.tri(mu_col, diag=F)]
+estimate$mu_row <- mu_row[upper.tri(mu_row, diag=F)]
+estimate$mean_mu <- sqrt(estimate$mu_col*estimate$mu_row)*1000
+estimate$ctrue <- as.factor(estimate$vtrue)
+
+library(data.table)
+library(dplyr)
+
+# dependent
+estimate <- estimate[estimate$true!=0,]
+long <- melt(setDT(estimate), id.vars = names(estimate)[16:21], variable.name = "Method")
+long <- long[!(long$Method %in% c("our","our_new_regu","our_new_ori","our_est_new_ori",
+                                  "our_est")),]
+long$Method <- recode(long$Method, sct="\u03c1-sctransform",noise="Noise \nRegularization",
+                      spqn="SpQN",prn="Pearson",spr="Spearman",propr="propr",
+                      normalisr="Normalisr",loccsn="locCSN",
+                      our_est_new_regu="CS-CORE", ana_prn="\u03c1-analytic PR")
+
+baredSC <- read.csv("/gpfs/gibbs/pi/zhao/xs282/farnarm/baredSC/AR1_small_top5000_05_v2/bared_est.csv")
+baredSC$Method <- "baredSC"
+baredSC$mean_mu <- 10^baredSC$mean
+baredSC$value <- baredSC$est_cor
+
+long_bias <- long[,c("Method","mean_mu","value")]
+long_bias <- rbind(baredSC[,c("Method","mean_mu","value")], long_bias)
+
+raw_data <- list("Figure 3A"=long_bias)
+
+long_diff <- long_bias
+long_diff$seq_depth <- "Varying"
+
+################# # compare the variability of constant sequencing depth and varying #############
+# ggplot()+
+#   geom_point(aes(estimate$our_est_new_regu,estimate2$our_est_new_regu), alpha=0.3)+
+#   xlab("varying")+
+#   ylab("constant")
+#
+# estimate$our_est_new_regu[is.na(estimate$our_est_new_regu)] <- 0
+# estimate2$our_est_new_regu[is.na(estimate2$our_est_new_regu)] <- 0
+# sum(abs(estimate$our_est_new_regu)>1)/nrow(estimate)
+# sum(abs(estimate2$our_est_new_regu)>1)/nrow(estimate2)
+#
+# var_tab <- data.frame(varying=estimate$our_est_new_regu,
+#                       constant=estimate2$our_est_new_regu,
+#                       mean_expr = estimate$mean_mu)
+# var_tab <- var_tab[order(var_tab$mean_expr),]
+# var_tab$group <- as.factor(rep(1:25, each=200)[1:4999])
+# tab <- group_by(var_tab, group) %>%
+#   summarise(var_varying = var(varying),
+#             var_constant = var(constant))
+# print(tab, n=100)
+# # sequencing depth
+# long_diff <- long
+# long_diff$seq_depth <- "Different"
+#
+prefix <- "small_top5000_05_constant"
+path <- paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/")
+mu <- readRDS(paste0(path,'/mu.rds'))
+true_cor <- readRDS(paste0(path,'true_correlation.rds'))
+sel.gene <- readRDS(paste0(path,'cor_gene.rds'))
+
+# new methods
+ana_prn <- readRDS(paste0(path,'/analyticPrn.rds'))
+ana_prn <- ana_prn[sel.gene,sel.gene]
+
+# read estimations
+sctransform_prn <- readRDS(paste0(path,'/sctransform_pearson_cor.rds'))
+sctransform_prn <- sctransform_prn[sel.gene,sel.gene]
+
+noise_spr <- readRDS(paste0(path,'/noise_spearman_cor.rds'))
+noise_spr <- noise_spr[sel.gene,sel.gene]
+
+spqn_prn <- readRDS(paste0(path,'/spqn_pearson_cor.rds'))
+spqn_prn <- spqn_prn[sel.gene,sel.gene]
+
+normalisr_prn <- as.matrix(read.csv(paste0(path,'/normalisr_prn.csv'), row.names = 1))
+normalisr_prn <- normalisr_prn[sel.gene,gsub("-",".",sel.gene)]
+
+propr <- readRDS(paste0(path,'/propr_pr.rds'))
+propr <- propr[sel.gene,sel.gene]
+
+our_pvalue <- readRDS(paste0(path,'/our_pvalue.rds'))
+our_pvalue <- our_pvalue[sel.gene,sel.gene]
+
+our_est <- readRDS(paste0(path,'/our_est.rds'))
+our_est <- our_est[sel.gene,sel.gene]
+our_est <- pre_process_cor_est(our_est)$est
+
+our_pvalue_new_regu <- readRDS(paste0(path,'/our_pvalue_new_regu.rds'))
+our_pvalue_new_regu <- our_pvalue_new_regu[sel.gene,sel.gene]
+
+our_est_new_regu <- readRDS(paste0(path,'/our_est_new_regu.rds'))
+our_est_new_regu <- our_est_new_regu[sel.gene,sel.gene]
+our_est_new_regu <- pre_process_cor_est(our_est_new_regu)$est
+
+our_pvalue_new_ori <- readRDS(paste0(path,'/our_pvalue_new_ori.rds'))
+our_pvalue_new_ori <- our_pvalue_new_ori[sel.gene,sel.gene]
+
+our_est_new_ori <- readRDS(paste0(path,'/our_est_new_ori.rds'))
+our_est_new_ori <- our_est_new_ori[sel.gene,sel.gene]
+our_est_new_ori <- pre_process_cor_est(our_est_new_ori)$est
+
+spearman <- readRDS(paste0(path,'/spearman_cor.rds'))
+spearman <- spearman[sel.gene,sel.gene]
+
+pearson <- readRDS(paste0(path,'/pearson_cor.rds'))
+pearson <- pearson[sel.gene,sel.gene]
+
+loccsn <- readRDS(paste0(path,'/loccsn.rds'))
+loccsn <- loccsn[sel.gene,sel.gene]
+
+# expression level matrix
+mu_col <- matrix(mu[sel.gene],(ntop_gene_uncor+ncor_gene),
+                 (ntop_gene_uncor+ncor_gene),byrow = T)
+mu_row <- matrix(mu[sel.gene],(ntop_gene_uncor+ncor_gene),
+                 (ntop_gene_uncor+ncor_gene))
+
+estimate <- data.frame(sct=sctransform_prn[upper.tri(sctransform_prn, diag = FALSE)],
+                       noise=noise_spr[upper.tri(noise_spr, diag = FALSE)],
+                       spqn=spqn_prn[upper.tri(spqn_prn, diag=F)],
+                       prn=pearson[upper.tri(pearson, diag=F)],
+                       spr=spearman[upper.tri(spearman, diag=F)],
+                       our=-log10(our_pvalue[upper.tri(our_pvalue, diag=F)]),
+                       our_est=our_est[upper.tri(our_est, diag=F)],
+                       propr=propr[upper.tri(propr, diag=F)],
+                       normalisr=normalisr_prn[upper.tri(normalisr_prn, diag=F)],
+                       loccsn=loccsn[upper.tri(loccsn, diag=F)],
+                       our_new_regu=-log10(our_pvalue_new_regu[upper.tri(our_pvalue_new_regu, diag=F)]),
+                       our_est_new_regu=our_est_new_regu[upper.tri(our_est_new_regu, diag=F)],
+                       our_new_ori=-log10(our_pvalue_new_ori[upper.tri(our_pvalue_new_ori, diag=F)]),
+                       our_est_new_ori=our_est_new_ori[upper.tri(our_est_new_ori, diag=F)],
+                       ana_prn=ana_prn[upper.tri(ana_prn, diag = FALSE)]
+)
+estimate$vtrue <- true_cor[upper.tri(true_cor, diag=F)]
+estimate$true <- ifelse(estimate$vtrue!=0,1,0)
+estimate$mu_col <- mu_col[upper.tri(mu_col, diag=F)]
+estimate$mu_row <- mu_row[upper.tri(mu_row, diag=F)]
+estimate$mean_mu <- sqrt(estimate$mu_col*estimate$mu_row)*1000
+estimate$ctrue <- as.factor(estimate$vtrue)
+
+estimate <- estimate[estimate$true!=0,]
+long <- melt(setDT(estimate), id.vars = names(estimate)[16:21], variable.name = "Method")
+long <- long[!(long$Method %in% c("our","our_new_regu","our_new_ori","our_est_new_ori",
+                                  "our_est")),]
+long$Method <- recode(long$Method, sct="\u03c1-sctransform",noise="Noise \nRegularization",
+                      spqn="SpQN",prn="Pearson",spr="Spearman",propr="propr",
+                      normalisr="Normalisr",loccsn="locCSN",
+                      our_est_new_regu="CS-CORE", ana_prn="\u03c1-analytic PR")
+
+baredSC <- read.csv("/gpfs/gibbs/pi/zhao/xs282/farnarm/baredSC/AR1_small_top5000_05_constant_v2/bared_est.csv")
+baredSC$Method <- "baredSC"
+baredSC$mean_mu <- 10^baredSC$mean
+baredSC$value <- baredSC$est_cor
+
+long_bias <- long[,c("Method","mean_mu","value")]
+long_bias <- rbind(baredSC[,c("Method","mean_mu","value")], long_bias)
+
+long_const <- long_bias
+long_const$seq_depth <- "Constant"
+
+long_comb <- rbind(long_diff,long_const)
+long_comb$Confounding2 <- factor(long_comb$seq_depth,
+                             levels = c("Varying","Constant"))
+raw_data[["Supplementray Figure 3"]] <- long_comb
+
+p1 <- ggplot(long1, aes(x=log10(mean_mu), y=value, color=Confounding2))+
+  # geom_point(alpha=0.1)+
+  geom_smooth(method="gam",se=F)+theme_classic()+ylim(-1,1)+
+  # scale_x_continuous(lim = c(-1.5,0.8))+
+  # scale_x_continuous(breaks = c(-2,-1,0,1),label = c(0.01,0.1,1,10))+
+  theme(legend.position = "bottom",
+        text = element_text(size = 16),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12,face = "bold"))+
+  facet_wrap(. ~ Method_f)+
+  labs(y="Estimate", x="Gene Expression", color="Sequencing Depth")+
+  geom_hline(yintercept=0.5,linetype=2)#+ labs(tag = "A")
+p1
+p_sup <- ggplot(long_comb, aes(x=log10(mean_mu), y=value, color=Confounding2))+
+  # geom_point(alpha=0.1)+
+  geom_smooth(method="gam",se=F)+theme_classic()+ylim(-1,1)+
+  scale_color_manual(values = c("Varying"="#D55E00","Constant"="#0072B2"))+
+  theme(legend.position = "bottom",
+        text = element_text(size = 16),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 12,face = "bold"))+
+  facet_wrap(. ~ Method)+
+  labs(y="Co-expression Estimate (True correlation = 0.5)", x="Gene Expression",
+       color="Sequencing Depth")+
+  geom_hline(yintercept=0.5,linetype=2)
+p_sup
+gb <- ggplot_build(p_sup)
+
+View(gb$data[[1]])
+source_data[["Supplementray Figure 3"]] <- gb$data[[1]]
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/',"FigS3.pdf"), width = 10, height = 6, onefile = T)
+p_sup
+dev.off()
+
+# 
+# #######################
+color_setting <- c("CS-CORE"="#db6d00", "Noise \nRegularization"="#ff6db6",
+                   "Normalisr"="#490092", "\u03c1-sctransform"="#006ddb",
+                   "Pearson"="#b66dff", "Spearman"="#920000","SpQN"="#004949",
+                   "propr"="#24ff24","locCSN"="#b6dbff","\u03c1-analytic PR"="#009292",
+                   "baredSC"="#EEDC82")
+
+baredSC <- read.csv("/gpfs/gibbs/pi/zhao/xs282/farnarm/baredSC/AR1_small_top5000_05_v2/bared_est.csv")
+baredSC$Method <- "baredSC"
+baredSC$mean_mu <- 10^baredSC$mean
+baredSC$value <- baredSC$est_cor
+baredSC$group <- cut(baredSC$mean, breaks=seq(-1.5, 1.2, by=0.1))
+
+estimate_sub <- estimate[,c(1:5,8:10,12,15:21)]
+estimate_sub$log10mean_mu <- log10(estimate_sub$mean_mu)
+estimate_sub$group <- cut(estimate_sub$log10mean_mu, breaks=seq(-1.5, 1.2, by=0.1))
+group_list <- unique(estimate_sub$group)
+mse_mat <- matrix(NA, nrow=length(group_list), ncol=12)
+colnames(mse_mat) <- c("group",names(estimate_sub)[1:10],"baredSC")
+
+for (i in 1:length(group_list)){
+  mse_mat[i,1] <- as.character(group_list[i])
+  my_sub <- estimate_sub[estimate_sub$group==group_list[i],]
+  mse_mat[i,2:11] <- apply(my_sub[,c(1:10)], 2, function(x){mean((x-0.5)^2)})
+  if (sum(baredSC$group==group_list[i])!=0){
+    my_sub2 <- baredSC[baredSC$group==group_list[i],]
+    mse_mat[i,12] <- mean((my_sub2$est_cor-0.5)^2)
+  }
+}
+
+group_mean <- function(x){
+  group_sp <- str_split(x, pattern=",", simplify = TRUE)
+  group_sp[,1] <- as.numeric(gsub(pattern = "\\(","",group_sp[,1]))
+  group_sp[,2] <- as.numeric(gsub(pattern = "\\]","",group_sp[,2]))
+  return((as.numeric(group_sp[,1])+as.numeric(group_sp[,2]))/2)
+}
+
+mse_mat <- as.data.frame(mse_mat)
+mse_mat$exp <- group_mean(group_list)
+
+mse_mat_long <- melt(setDT(mse_mat), id.vars = names(mse_mat)[c(1,13)], variable.name = "Method")
+mse_mat_long$Method <- recode(mse_mat_long$Method, sct="\u03c1-sctransform",noise="Noise \nRegularization",
+                              spqn="SpQN",prn="Pearson",spr="Spearman",propr="propr",
+                              normalisr="Normalisr",loccsn="locCSN",
+                              our_est_new_regu="CS-CORE", ana_prn="\u03c1-analytic PR",
+                              baredSC="baredSC")
+mse_mat_long$value <- as.numeric(mse_mat_long$value)
+
+source_data <- list("Supplementray Figure 4B"=mse_mat_long)
+
+sup1 <- ggplot(mse_mat_long, aes(x=exp, y=value, color=Method))+
+  geom_point()+geom_line()+
+  theme_classic()+
+  scale_color_manual(values = color_setting,
+                     breaks = sort(c("CS-CORE", "locCSN", "Noise \nRegularization","Normalisr",
+                                     "Pearson","propr","\u03c1-sctransform", 
+                                     "Spearman", "SpQN","\u03c1-analytic PR","baredSC")),
+                     labels = c("baredSC","CS-CORE", "locCSN",  "Noise \nRegularization",
+                                "Normalisr","Pearson","propr","Spearman","SpQN", 
+                                expression(paste(rho, "-analytic PR")), 
+                                expression(paste(rho, "-sctransform"))))+
+  theme(text = element_text(size = 20),#legend.position="bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 20,face = "bold"),
+        legend.text.align = 0)+
+  labs(y="MSE", x="Gene Expression", col="")+ylim(0,0.25)+ labs(tag = "B")
+
+long_bias <- long[,c("Method","mean_mu","value")]
+long_bias <- rbind(baredSC[,c("Method","mean_mu","value")], long_bias)
+total_mse <- group_by(long_bias, Method) %>% 
+  summarize(mse=mean((value-0.5)^2))
+source_data[["Supplementray Figure 4C"]] <- total_mse
+
+sup2 <- ggplot(total_mse,aes(x=fct_reorder(Method, mse,.desc =T),y=mse, fill=Method))+
+  geom_bar(stat="identity", position=position_dodge())+coord_flip()+
+  labs(x="Method",y="Average MSE")+
+  scale_fill_manual(values = color_setting)+
+  theme_classic()+scale_color_discrete(guide="none")+
+  theme(legend.position="none",
+        text = element_text(size = 20),legend.text = element_text(size = 14),
+        legend.title = element_text(size = 14,face = "bold"))+ labs(tag = "C")
+
+# boxplot
+estimate_sub$group2 <- cut(estimate_sub$log10mean_mu, breaks=seq(-1.5, 1.2, by=0.3))
+estimate_sub$exp <- group_mean(estimate_sub$group2)
+long_box <- melt(setDT(estimate_sub), id.vars = names(estimate_sub)[11:20], variable.name = "Method")
+long_box$Method <- recode(long_box$Method, sct="\u03c1-sctransform",noise="Noise \nRegularization",
+                      spqn="SpQN",prn="Pearson",spr="Spearman",propr="propr",
+                      normalisr="Normalisr",loccsn="locCSN",
+                      our_est_new_regu="CS-CORE", ana_prn="\u03c1-analytic PR")
+baredSC$group2 <- cut(baredSC$mean, breaks=seq(-1.5, 1.2, by=0.3))
+baredSC$exp <- group_mean(baredSC$group2)
+long_bias <- long_box[,c("Method","exp","value","group2")]
+long_bias <- rbind(baredSC[,c("Method","exp","value","group2")], long_bias)
+
+source_data[["Supplementray Figure 4A"]] <- long_bias
+
+sup3 <- ggplot(long_bias, aes(x=as.factor(group2), y=value))+
+  geom_boxplot()+
+  labs(y="Estimate", x="Gene Expression", col="")+
+  facet_wrap(.~Method)+theme_classic()+
+  theme(text = element_text(size = 20),#legend.position="bottom",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 20,face = "bold"))+ labs(tag = "A")+
+  geom_hline(yintercept=0.5,linetype=2, col="red", size=1)+
+  scale_x_discrete(guide = guide_axis(angle = 90))
+sup3
+
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","sup4_5_23.pdf"), width = 11, height = 13, onefile = T)
+ggarrange(sup3, ggarrange(sup1, sup2, ncol = 2, widths = c(1.2,0.8)), nrow = 2,heights = c(2,1.2)) 
+dev.off()
+
+
+# # original
+# long_bias <- long[,c("Method","mean_mu","value")]
+# long_bias <- rbind(baredSC[,c("Method","mean_mu","value")], long_bias)
+# 
+# pA2 <- ggplot(long_bias, aes(x=log10(mean_mu), y=value,col=Method,group=Method))+
+#   # geom_point(alpha=0.2)+
+#   geom_smooth(method="gam",se=F,
+#               formula = y ~ s(x, bs = "cs", k=7))+
+#   # geom_smooth(method="gam",se=F)+
+#   labs(y="Estimate", x="Gene Expression", col="")+
+#   scale_x_continuous(lim = c(-1.5,0.8))+
+#   theme_classic()+
+#   scale_color_manual(values = c("CS-CORE"="darkgreen", "Noise \nRegularization"="#FF1F5B",
+#                                 "Normalisr"="#36454F", "\u03c1-sctransform"="#AF58BA",
+#                                 "Pearson"="#FFC61E", "Spearman"="#F28522","SpQN"="#a3d0d4",
+#                                 "propr"="#2166AC","locCSN"="brown","\u03c1-analytic PR"="#EBB8DD",
+#                                 "baredSC"="#C0C0C0"),
+#                      breaks = sort(c("CS-CORE", "locCSN", "Noise \nRegularization","Normalisr",
+#                                      "Pearson","propr","\u03c1-sctransform",
+#                                      "Spearman", "SpQN","\u03c1-analytic PR","baredSC")),
+#                      labels = c("baredSC", "CS-CORE", "locCSN",  "Noise \nRegularization",
+#                                 "Normalisr","Pearson","propr","Spearman","SpQN",
+#                                 expression(paste(rho, "-analytic PR")),
+#                                 expression(paste(rho, "-sctransform"))))+
+#   # scale_x_continuous(breaks = c(-2,-1,0,1),label = c(0.01,0.1,1,10))+
+#   theme(text = element_text(size = 20),#legend.position="bottom",
+#         legend.text = element_text(size = 14),
+#         legend.title = element_text(size = 20,face = "bold"),
+#   )+ labs(tag = "A")+
+#   #guides(color=guide_legend(nrow=1,byrow=TRUE))+
+#   annotate("text", x=-0.7,y=0.8, label="(True correlation = 0.5)", size=7)
+
+method_vec <- unique(long_bias$Method)
+long_bias$fitted <- NA
+for (i in 1:length(method_vec)){
+  sub_data <- long_bias[long_bias$Method==method_vec[i],]
+  fit <- mgcv::gam(value ~ s(log10(mean_mu), bs = "cs", k=7), data=sub_data,method = "REML")
+  long_bias$fitted[long_bias$Method==method_vec[i]] <- fit$fitted.values
+}
+
+plot_data <- long_bias
+plot_data <- plot_data[plot_data$fitted>0,]
+plot_data <- plot_data[c("Method",  "mean_mu", "fitted" )]
+source_data[["Figure 3A"]] <- plot_data
+
+
+# color_setting <- c("CS-CORE"="darkgreen", "Noise \nRegularization"="#FF1F5B",
+#                    "Normalisr"="#36454F", "\u03c1-sctransform"="#AF58BA",
+#                    "Pearson"="#FFC61E", "Spearman"="#F28522","SpQN"="#a3d0d4",
+#                    "propr"="#2166AC","locCSN"="brown","\u03c1-analytic PR"="#EBB8DD",
+#                    "baredSC"="#C0C0C0")
+color_setting <- c("CS-CORE"="#db6d00", "Noise \nRegularization"="#ff6db6",
+                   "Normalisr"="#490092", "\u03c1-sctransform"="#006ddb",
+                   "Pearson"="#b66dff", "Spearman"="#920000","SpQN"="#004949",
+                   "propr"="#24ff24","locCSN"="#b6dbff","\u03c1-analytic PR"="#009292",
+                   "baredSC"="#EEDC82")
+
+pA <- ggplot(plot_data, aes(x=log10(mean_mu), y=fitted,col=Method,group=Method))+
+  geom_line(size=1)+
+  labs(y="Estimate", x="Gene Expression", col="")+
+  scale_x_continuous(lim = c(-1.5,0.8))+
+  theme_classic()+
+  scale_color_manual(values = color_setting,
+                     breaks = sort(c("CS-CORE", "locCSN", "Noise \nRegularization","Normalisr",
+                                     "Pearson","propr","\u03c1-sctransform", 
+                                     "Spearman", "SpQN","\u03c1-analytic PR","baredSC")),
+                     labels = c("baredSC", "CS-CORE", "locCSN",  "Noise \nRegularization",
+                                "Normalisr","Pearson","propr","Spearman","SpQN", 
+                                expression(paste(rho, "-analytic PR")), 
+                                expression(paste(rho, "-sctransform"))))+
+  theme(text = element_text(size = 20),#legend.position="bottom",
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 20,face = "bold"),
+        legend.text.align = 0)+ labs(color="Method")+
+  annotate("text", x=-0.7,y=0.8, label="(True correlation = 0.5)", size=7)+
+  # geom_hline(yintercept=0.5, linetype="dashed")
+pA
+
+pleg <- ggplot(long_bias, aes(x=log10(mean_mu), y=value,col=Method,group=Method))+
+  geom_smooth(method="gam",se=F,size=3)+
+  labs(y="Estimate", x="Gene Expression", col="")+
+  scale_x_continuous(lim = c(-1.5,0.8))+
+  theme_classic()+
+  scale_color_manual(values = color_setting,
+                     breaks = sort(c("CS-CORE", "locCSN", "Noise \nRegularization","Normalisr",
+                                     "Pearson","propr","\u03c1-sctransform", 
+                                     "Spearman", "SpQN","\u03c1-analytic PR","baredSC")),
+                     labels = c("baredSC", "CS-CORE", "locCSN",  "Noise \nRegularization",
+                                "Normalisr","Pearson","propr","Spearman","SpQN", 
+                                expression(paste(rho, "-analytic PR")), 
+                                expression(paste(rho, "-sctransform"))))+
+  # scale_x_continuous(breaks = c(-2,-1,0,1),label = c(0.01,0.1,1,10))+
+  theme(legend.position="bottom",text = element_text(size = 20),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 20,face = "bold"),
+        legend.text.align = 0)+ labs(tag = "A")+
+  guides(color=guide_legend(nrow=2,byrow=TRUE))+
+  annotate("text", x=-1,y=0.8, label="(true = 0.5)", size=5)
+leg <- get_legend(pleg)
+plot(leg)
+
+p1 <- ggplot(long_bias, aes(x=log10(mean_mu), y=value))+
+  geom_point(alpha=0.1, size=0.3)+
+  geom_smooth(method="gam",se=F,
+              formula = y ~ s(x, bs = "cs", k=7))+
+  labs(y="Estimate", x="Gene Expression", col="")+
+  scale_x_continuous(lim = c(-1.5,0.8))+
+  scale_y_continuous(lim=c(-1,1))+
+  theme_classic()+
+  theme(text = element_text(size = 20),#legend.position="bottom",
+        legend.text = element_text(size = 14),
+        legend.title = element_text(size = 20,face = "bold"))+ 
+  theme(legend.position = "none")+
+  facet_wrap(. ~ Method)+
+  geom_hline(yintercept=0.5,linetype=2, col="red", size=1)
+p1
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","fig2A_sup.pdf"), width = 12, height = 7, onefile = T)
+p1
+dev.off()
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","fig2A_4_2.pdf"), width = 8, height = 4.5, onefile = T)
+pA
+pA2
+p1
+dev.off()
+
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","result_fig3_5000.pdf"), width = 11, height = 4.5, onefile = T)
+pA+pB #pB is from fig2B.R
+dev.off()
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/result_fig3_1_30.pdf'), width = 13, height = 4.5, onefile = T)
+pA+pB #pB is from fig2B.R
+dev.off()
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","result_fig3_sup.pdf"), width = 7, height = 7, onefile = T)
+p1
+dev.off()
+
+pdf(paste0('/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/', cor_type, "_", prefix, "/","result_fig2A.pdf"), width = 7, height = 4.5, onefile = T)
+pA
+dev.off()
+
+openxlsx::write.xlsx(source_data, file = '/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/source_data.xlsx')
+openxlsx::write.xlsx(raw_data, file = '/gpfs/gibbs/pi/zhao/xs282/coexp_sc_simulation/v2/raw_data.xlsx')
+
+
+
+
+

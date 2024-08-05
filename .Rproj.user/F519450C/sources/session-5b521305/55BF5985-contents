@@ -1,0 +1,230 @@
+# null distribution from /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/NB_simu_IND_PNAS_and_ROSMAP_NC_Oli_11_14_2023.R
+# cor est from /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/NB_simu_PNAS_and_ROSMAP_NC_Oli_11_13_2023.R
+#              /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/estimate_cor_1000_abs_thresh_PNAS_and_ROSMAP_NC_Oli_11_15_2023.R
+library(matrixStats)
+setwd("/gpfs/gibbs/pi/zhao/xs282/validation/")
+
+seed <- 12052023
+set.seed(seed)
+
+ori_ests <- readRDS("marginal_fit/ROSMAP_NC_Oli_cscore_cor1000.rds")
+gene_name <- colnames(ori_ests$est)
+
+############# ROSMAP
+# cor estimations
+
+ROSMAP_est <- readRDS("real/oli/est_cor.rds")
+
+n_pair <- 1000*(1000-1)/2
+n_permu <- 500
+nulll <- list()
+nulll[["sct"]] <-  matrix(nrow=n_pair, ncol=n_permu)
+nulll[["cscore_est"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["propr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["spr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["ana_prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["noise"]] <- matrix(nrow=n_pair, ncol=n_permu)
+
+for (i in 1:n_permu){
+  print(i)
+  path <- paste0("real/oli/simu_IND/ROSMAP/est_cor_s", i, ".rds")
+  est_mat <- readRDS(path)
+
+  nulll[["sct"]][,i] <- est_mat[,"sct"]
+  nulll[["cscore_est"]][,i] <- est_mat[,"cscore_est"]
+  nulll[["prn"]][,i] <- est_mat[,"prn"]
+  nulll[["propr"]][,i] <- est_mat[,"propr"]
+  nulll[["spr"]][,i] <- est_mat[,"spr"]
+  nulll[["ana_prn"]][,i] <- est_mat[,"ana_prn"]
+  nulll[["noise"]][,i] <- est_mat[,"noise"]
+}
+
+saveRDS(nulll, paste0("real/oli/ROSMAP_simu_null.rds"))
+
+nulll <- readRDS("real/oli/ROSMAP_simu_null.rds")
+mean_mat <- data.frame(sct=rowMeans(nulll$sct), prn=rowMeans(nulll$prn),
+                       spr=rowMeans(nulll$spr), propr=rowMeans(nulll$propr),
+                       cscore_est=rowMeans(nulll$cscore_est),
+                       ana_prn=rowMeans(nulll$ana_prn), noise=rowMeans(nulll$noise))
+hist(mean_mat$sct)
+hist(mean_mat$noise)
+hist(mean_mat$spr)
+sd_mat <- data.frame(sct=rowSds(nulll$sct), prn=rowSds(nulll$prn),
+                     spr=rowSds(nulll$spr), propr=rowSds(nulll$propr),
+                     cscore_est=rowSds(nulll$cscore_est),
+                     ana_prn=rowSds(nulll$ana_prn), noise=rowSds(nulll$noise))
+hist(sd_mat$sct)
+hist(sd_mat$noise)
+hist(sd_mat$noise)
+
+marginal_fit_ROSMAP = readRDS('marginal_fit/ROSMAP_NC_Oli_marginal_fit.rds')
+marginal_fit_ROSMAP <- marginal_fit_ROSMAP[order(marginal_fit_ROSMAP$mu, decreasing = T),]
+mu_ROSMAP <- marginal_fit_ROSMAP[gene_name,]$mu
+
+
+ncor_gene <- length(gene_name)
+mu_col_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene,byrow = T)
+mu_row_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene)
+log10mean_mu_ROSMAP <- log10(sqrt(10^mu_col_ROSMAP*10^mu_row_ROSMAP))
+mean_mat$exp <- log10mean_mu_ROSMAP[upper.tri(log10mean_mu_ROSMAP)]
+mean_mat$sct_est <- ROSMAP_est$sct
+mean_mat$noise_est <- ROSMAP_est$noise
+ggplot(mean_mat, aes(x=sct_est, y=sct, color=exp))+
+  geom_point(alpha=0.1)
+ggplot(mean_mat, aes(x=noise_est, y=noise, color=exp))+
+  geom_point(alpha=0.1)
+
+mean_sct <- ggplot(mean_mat, aes(x=exp, y=sct))+
+  geom_point(alpha=0.1)+labs(title = "Mean of null dist (sct)")+ylim(-0.03, 0.05)
+mean_noise <- ggplot(mean_mat, aes(x=exp, y=noise))+
+  geom_point(alpha=0.1)+labs(title = "Mean of null dist (noise)")+ylim(-0.03, 0.05)
+mean_sct+mean_noise
+
+sd_mat$exp <- log10mean_mu_ROSMAP[upper.tri(log10mean_mu_ROSMAP)]
+sd_sct <- ggplot(sd_mat, aes(x=exp, y=sct))+
+  geom_point(alpha=0.1)+labs(title = "SD of null dist (sct)")+ylim(0.005, 0.01)
+sd_noise <- ggplot(sd_mat, aes(x=exp, y=noise))+
+  geom_point(alpha=0.1)+labs(title = "SD of null dist (noise)")+ylim(0.005, 0.01)
+sd_sct+sd_noise
+
+
+sd_mat$sct_est <- ROSMAP_est$sct
+sd_mat$noise_est <- ROSMAP_est$noise
+ggplot(sd_mat, aes(x=sct_est, y=sct))+
+  geom_point(alpha=0.1)
+ggplot(sd_mat, aes(x=noise_est, y=noise))+
+  geom_point(alpha=0.1)
+
+
+est_mat <- ROSMAP_est
+p_val <- data.frame(sct=pnorm(abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = F)+
+                      pnorm(-abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = T),
+                   prn=pnorm(abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = F)+
+                     pnorm(-abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = T),
+                   spr=pnorm(abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = F)+
+                     pnorm(-abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = T),
+                   propr=pnorm(abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = F)+
+                     pnorm(-abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = T),
+                   cscore_est=pnorm(abs(est_mat$cscore_est), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = F)+
+                     pnorm(-abs(est_mat$cscore_est), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = T),
+                   ana_prn=pnorm(abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = F)+
+                     pnorm(-abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = T),
+                   noise=pnorm(abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = F)+
+                     pnorm(-abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = T))
+saveRDS(p_val, paste0("real/oli/ROSMAP_oli_norm_p.rds"))
+p_val$exp <- mean_mat$exp
+p_val$sct_est <- mean_mat$sct_est
+p_val$sct_adj_p <- p.adjust(p_val$sct, method="BH")
+
+summary(abs(nulll$sct[,1]))
+quantile(abs(nulll$sct[,1]), 0.9)
+
+sct_ind <- matrix(0, ncol=length(gene_name), nrow=length(gene_name))
+sct_ind[upper.tri(sct_ind)] <- nulll$sct[,1]
+sct_ind <- sct_ind+t(sct_ind)
+diag(sct_ind) <- 1
+
+plot_dat = data.frame(exp=mu_ROSMAP+3,
+                      est = colSums(sct_ind -diag(ncol(sct_ind))))
+ggplot(plot_dat, aes(x=exp, y=est))+
+  geom_point(alpha=0.1)+
+  geom_smooth()+ylim(-3,1)
+
+sct_ind <- matrix(NA, ncol=length(gene_name), nrow=length(gene_name))
+sct_ind[upper.tri(sct_ind)] <- nulll$sct[,1]
+sct_ind <- sct_ind+t(sct_ind)
+diag(sct_ind) <- 1
+
+
+mat <-matrix(0, ncol=length(gene_name), nrow=length(gene_name))
+mat[1:100,1:100] <- 1
+idx <- mat[upper.tri(mat)]
+p_val_sub <- p_val[which(idx==1),]
+p_val_sub$sct_adj_p <- p.adjust(p_val_sub$sct, method="BH")
+
+p1 <- ggplot(p_val_sub, aes(x=abs(sct_est), y=sct))+
+  geom_point()
+p1
+p2 <- ggplot(p_val, aes(x=abs(sct_est), y=sct))+
+  geom_point()
+p1+p2
+
+p1 <- ggplot(p_val_sub, aes(x=abs(sct_est), y=sct_adj_p))+
+  geom_point(size=0.1)+ylim(0,0.05)
+p2 <- ggplot(p_val, aes(x=abs(sct_est), y=sct_adj_p))+
+  geom_point(size=0.1)+ylim(0,0.05)
+p1+p2
+
+
+# n_pair <- 1000*(1000-1)/2
+# n_permu <- 1000
+# nulll <- list()
+# nulll[["sct"]] <-  matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["cscore_est"]] <- matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["propr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["spr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["ana_prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+# nulll[["noise"]] <- matrix(nrow=n_pair, ncol=n_permu)
+#
+# for (i in 1:n_permu){
+#   print(i)
+#   path <- paste0("mean_cor/simu/IND_v2/PNAS/est_cor_s", i, ".rds")
+#   est_mat <- readRDS(path)
+#
+#   nulll[["sct"]][,i] <- est_mat[,"sct"]
+#   nulll[["cscore_est"]][,i] <- est_mat[,"cscore_est"]
+#   nulll[["prn"]][,i] <- est_mat[,"prn"]
+#   nulll[["propr"]][,i] <- est_mat[,"propr"]
+#   nulll[["spr"]][,i] <- est_mat[,"spr"]
+#   nulll[["ana_prn"]][,i] <- est_mat[,"ana_prn"]
+#   nulll[["noise"]][,i] <- est_mat[,"noise"]
+# }
+#
+# saveRDS(nulll, paste0("mean_cor/simu/PNAS_simu_null.rds"))
+
+nulll <- readRDS("mean_cor/simu/PNAS_simu_null.rds")
+
+marginal_fit_PNAS = readRDS('marginal_fit/PNAS_NC_Oli_marginal_fit.rds')
+marginal_fit_PNAS <- marginal_fit_PNAS[order(marginal_fit_PNAS$mu, decreasing = T),]
+mu_PNAS <- marginal_fit_PNAS[gene_name,]$mu
+sct_ind <- matrix(0, ncol=length(gene_name), nrow=length(gene_name))
+sct_ind[upper.tri(sct_ind)] <- nulll$sct[,1]
+sct_ind <- sct_ind+t(sct_ind)
+diag(sct_ind) <- 1
+
+plot_dat = data.frame(exp=mu_PNAS+3,
+                      est = colSums(sct_ind -diag(ncol(sct_ind))))
+ggplot(plot_dat, aes(x=exp, y=est))+
+  geom_point(alpha=0.1)+
+  geom_smooth()+ylim(-3,1)
+
+mean_mat <- data.frame(sct=rowMeans(nulll$sct), prn=rowMeans(nulll$prn),
+                       spr=rowMeans(nulll$spr), propr=rowMeans(nulll$propr),
+                       cscore_est=rowMeans(nulll$cscore_est),
+                       ana_prn=rowMeans(nulll$ana_prn), noise=rowMeans(nulll$noise))
+sd_mat <- data.frame(sct=rowSds(nulll$sct), prn=rowSds(nulll$prn),
+                     spr=rowSds(nulll$spr), propr=rowSds(nulll$propr),
+                     cscore_est=rowSds(nulll$cscore_est),
+                     ana_prn=rowSds(nulll$ana_prn), noise=rowSds(nulll$noise))
+null_sct <- t(abs(nulll$sct))
+
+est_mat <- PNAS_est
+p_val <- data.frame(sct=pnorm(abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = F)+
+                      pnorm(-abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = T),
+                    prn=pnorm(abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = F)+
+                      pnorm(-abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = T),
+                    spr=pnorm(abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = F)+
+                      pnorm(-abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = T),
+                    propr=pnorm(abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = F)+
+                      pnorm(-abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = T),
+                    cscore_est=pnorm(abs(est_mat$cscore), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = F)+
+                      pnorm(-abs(est_mat$cscore), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = T),
+                    ana_prn=pnorm(abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = F)+
+                      pnorm(-abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = T),
+                    noise=pnorm(abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = F)+
+                      pnorm(-abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = T))
+saveRDS(p_val, paste0("mean_cor/simu/PNAS_simu_norm_p.rds"))
+
+

@@ -1,0 +1,893 @@
+# reproducibility based if the gene pair is correlated
+# /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/p_value_PNAS_and_ROSMAP_NC_Oli_12_5_2023.R
+
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+library(tidyverse)
+library(ggpubr)
+library(ggpattern)
+library(cowplot)
+setwd("/gpfs/gibbs/pi/zhao/xs282/validation/")
+source("/gpfs/gibbs/pi/zhao/xs282/validation/cscore_real_data_function.R")
+
+ROSMAP_oli_ct <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_sct_cor_NB_simu1000_abs_thresh.rds")
+PNAS_oli_ct <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_sct_cor_NB_simu1000_abs_thresh.rds")
+
+
+ROSMAP_ori_ests <- readRDS("mean_cor/semi_PD/simu/ROSMAP_NC_Oli_sct1000.rds")
+ROSMAP_ori_ests[abs(ROSMAP_ori_ests)<0.015] <- 0
+gene_name <- rownames(ROSMAP_ori_ests)
+mean(ROSMAP_ori_ests!=0)
+
+PNAS_ori_ests <- readRDS("mean_cor/semi_PD/simu/PNAS_NC_Oli_sct1000.rds")
+PNAS_ori_ests[abs(PNAS_ori_ests)<0.017] <- 0
+PNAS_ori_ests <- PNAS_ori_ests[gene_name, gene_name]
+mean(PNAS_ori_ests!=0)
+
+# original reproduce
+ori_mat <- data.frame(ROSMAP=ROSMAP_ori_ests[upper.tri(ROSMAP_ori_ests)],
+                      PNAS=PNAS_ori_ests[upper.tri(PNAS_ori_ests)])
+ori_mat <- as.data.frame(apply(ori_mat, 2, function(x){ifelse(x!=0,1,0)}))
+true_reproduce <- sum(ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+sum(ori_mat$ROSMAP>0)
+sum(ori_mat$PNAS>0)
+true_reproduce_pair <- ori_mat$PNAS==1 & ori_mat$ROSMAP==1
+
+# cor estimations
+ROSMAP_cscore <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_cscore1000_abs_thresh.rds")
+ROSMAP_cscore_p <- MatrixBH(ROSMAP_cscore$p_value)
+ROSMAP_cscore_p <- ROSMAP_cscore_p[gene_name, gene_name]
+ROSMAP_cscore_est <- ROSMAP_cscore$est[gene_name, gene_name]
+ROSMAP_cscore_est_filter <- ROSMAP_cscore_est
+ROSMAP_cscore_est_filter[ROSMAP_cscore_p >= 0.05] <- 0
+
+PNAS_cscore <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_cscore1000_abs_thresh.rds")
+PNAS_cscore_p <- MatrixBH(PNAS_cscore$p_value)
+PNAS_cscore_p <- PNAS_cscore_p[gene_name, gene_name]
+PNAS_cscore_est <- PNAS_cscore$est[gene_name, gene_name]
+PNAS_cscore_est_filter <- PNAS_cscore_est
+PNAS_cscore_est_filter[PNAS_cscore_p >= 0.05] <- 0
+
+ROSMAP_p <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_simu_norm_p.rds")
+ROSMAP_p_adj <- as.data.frame(apply(ROSMAP_p, 2, function(x){p.adjust(x, method = "BH")}))
+ROSMAP_p_adj$cscore_p <- ROSMAP_cscore_p[upper.tri(ROSMAP_cscore_p)]
+PNAS_p <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_simu_norm_p.rds")
+PNAS_p_adj <- as.data.frame(apply(PNAS_p, 2, function(x){p.adjust(x, method = "BH")}))
+PNAS_p_adj$cscore_p <- PNAS_cscore_p[upper.tri(PNAS_cscore_p)]
+ROSMAP_p$cscore_p <- ROSMAP_cscore$p_value[gene_name, gene_name][upper.tri(ROSMAP_cscore$p_value[gene_name, gene_name])]
+PNAS_p$cscore_p <- PNAS_cscore$p_value[gene_name, gene_name][upper.tri(PNAS_cscore$p_value[gene_name, gene_name])]
+
+ROSMAP_sct <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_sct1000_abs_thresh.rds")
+ROSMAP_sct_est <- ROSMAP_sct[gene_name, gene_name]
+PNAS_sct <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_sct1000_abs_thresh.rds")
+PNAS_sct_est <- PNAS_sct[gene_name, gene_name]
+
+ROSMAP_ana_prn <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_ana_prn1000_abs_thresh.rds")
+ROSMAP_ana_prn_est <- ROSMAP_ana_prn[gene_name, gene_name]
+PNAS_ana_prn <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_ana_prn1000_abs_thresh.rds")
+PNAS_ana_prn_est <- PNAS_ana_prn[gene_name, gene_name]
+
+ROSMAP_noise <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_noise1000_abs_thresh.rds")
+ROSMAP_noise_est <- ROSMAP_noise[gene_name, gene_name]
+PNAS_noise <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_noise1000_abs_thresh.rds")
+PNAS_noise_est <- PNAS_noise[gene_name, gene_name]
+
+ROSMAP_propr <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_propr1000_abs_thresh.rds")
+ROSMAP_propr_est <- ROSMAP_propr@matrix[gene_name, gene_name]
+PNAS_propr <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_propr1000_abs_thresh.rds")
+PNAS_propr_est <- PNAS_propr@matrix[gene_name, gene_name]
+
+ROSMAP_prn <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_prn1000_abs_thresh.rds")
+ROSMAP_prn_est <- ROSMAP_prn[gene_name, gene_name]
+PNAS_prn <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_prn1000_abs_thresh.rds")
+PNAS_prn_est <- PNAS_prn[gene_name, gene_name]
+
+ROSMAP_spr <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_spr1000_abs_thresh.rds")
+ROSMAP_spr_est <- ROSMAP_spr[gene_name, gene_name]
+PNAS_spr <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_spr1000_abs_thresh.rds")
+PNAS_spr_est <- PNAS_spr[gene_name, gene_name]
+
+ROSMAP_est <- data.frame(sct=ROSMAP_sct_est[upper.tri(ROSMAP_sct_est)],
+                         prn=ROSMAP_prn_est[upper.tri(ROSMAP_prn_est)],
+                         spr=ROSMAP_spr_est[upper.tri(ROSMAP_spr_est)],
+                         propr=ROSMAP_propr_est[upper.tri(ROSMAP_propr_est)],
+                         cscore_est=ROSMAP_cscore_est[upper.tri(ROSMAP_cscore_est)],
+                         ana_prn=ROSMAP_ana_prn_est[upper.tri(ROSMAP_ana_prn_est)],
+                         noise=ROSMAP_noise_est[upper.tri(ROSMAP_noise_est)])
+
+PNAS_est <- data.frame(sct=PNAS_sct_est[upper.tri(PNAS_sct_est)],
+                       prn=PNAS_prn_est[upper.tri(PNAS_prn_est)],
+                       spr=PNAS_spr_est[upper.tri(PNAS_spr_est)],
+                       propr=PNAS_propr_est[upper.tri(PNAS_propr_est)],
+                       cscore_est=PNAS_cscore_est[upper.tri(PNAS_cscore_est)],
+                       ana_prn=PNAS_ana_prn_est[upper.tri(PNAS_ana_prn_est)],
+                       noise=PNAS_noise_est[upper.tri(PNAS_noise_est)])
+colnames(ROSMAP_p)
+
+
+# relationship between cor strengtha and p -----------------------------
+plist_pnas <- list()
+plist_rosmap <- list()
+idx <- sample(1:nrow(ROSMAP_p), 10000)
+prop_dat <- as.data.frame(matrix(NA, nrow = 0, ncol=3))
+colnames(prop_dat) <- c("group","prop","method")
+
+prec_list <- list()
+reca_list <- list()
+
+# mat <-matrix(0, ncol=length(gene_name), nrow=length(gene_name))
+# mat[500:1000,500:1000] <- 1
+# idx <- mat[upper.tri(mat)]
+
+marginal_fit_ROSMAP = readRDS('marginal_fit/ROSMAP_NC_Oli_marginal_fit.rds')
+mu_ROSMAP <- marginal_fit_ROSMAP[gene_name,]$mu
+
+ncor_gene <- length(gene_name)
+mu_col_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene,byrow = T)
+mu_row_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene)
+log10mean_mu_ROSMAP <- log10(sqrt(10^mu_col_ROSMAP*10^mu_row_ROSMAP))
+
+rank_p <- list()
+rank_p_rosmap <- list()
+for (i in 1:(ncol(ROSMAP_p)-1)){
+  nd <- colnames(ROSMAP_p)[i]
+  dat <- data.frame(PNAS_est = PNAS_est[,nd],
+                    ROSMAP_est = ROSMAP_est[,nd],
+                    PNAS_p = PNAS_p[,nd],
+                    ROSMAP_p = ROSMAP_p[,nd],
+                    PNAS_adj_p = PNAS_p_adj[,nd],
+                    ROSMAP_adj_p = ROSMAP_p_adj[,nd])
+  rank_dt <- data.frame(rank_PNAS_est = rank(abs(dat$PNAS_est)),
+                        rank_PNAS_p = rank(dat$PNAS_p))
+  rank_p[[i]] <- ggplot(rank_dt, aes(x=rank_PNAS_est, y=rank_PNAS_p))+
+    geom_point(alpha=0.1)+geom_abline(intercept = 0, slope=1, col="red")+
+    labs(title=nd)
+
+  rank_dt <- data.frame(rank_ROSMAP_est = rank(abs(dat$ROSMAP_est)),
+                        rank_ROSMAP_p = rank(dat$ROSMAP_p))
+  rank_p_rosmap[[i]] <- ggplot(rank_dt, aes(x=rank_ROSMAP_est, y=rank_ROSMAP_p))+
+    geom_point(alpha=0.1)+geom_abline(intercept = 0, slope=1, col="red")+
+    labs(title=nd)
+
+  dat$gene <- 1:nrow(dat)
+  dat <- cbind(dat,ori_mat)
+  dat$exp <- log10mean_mu_ROSMAP[upper.tri(log10mean_mu_ROSMAP)]
+  # dat <- dat[which(idx==1),]
+  dat_sub <- dat[dat$PNAS_adj_p<0.05,]
+  dat_sub_rosmap <- dat[dat$ROSMAP_adj_p<0.05,]
+  cand_p <- seq(0,0.05, length=20)
+  precision <- matrix(NA, ncol=3, nrow=length(cand_p))
+  colnames(precision) <- c("p","cor_strength","diff")
+#
+#   reca <- matrix(NA, ncol=3, nrow=length(cand_p))
+#   colnames(reca) <- c("p","cor_strength","diff")
+#   for (k in 1:length(cand_p)){
+#     thresh <- cand_p[k]
+#     cand_dat <- dat[dat$PNAS_adj_p<thresh,]
+#     cand_dat_rosmap <- dat[dat$ROSMAP_adj_p<thresh,]
+#     precision[k, "p"] <- sum(cand_dat_rosmap$gene %in% cand_dat$gene & cand_dat_rosmap$PNAS==1 & cand_dat_rosmap$ROSMAP==1)/sum(cand_dat_rosmap$gene %in% cand_dat$gene)
+#     reca[k, "p"] <- sum(cand_dat_rosmap$gene %in% cand_dat$gene & cand_dat_rosmap$PNAS==1 & cand_dat_rosmap$ROSMAP==1)/sum(dat$PNAS==1 & dat$ROSMAP==1)
+#
+#     top <- nrow(cand_dat)
+#     top_thresh <- quantile(abs(dat_sub$PNAS_est), 1-top/nrow(dat_sub))
+#     cand_dat <- dat_sub[abs(dat_sub$PNAS_est)>top_thresh,]
+#
+#     top_rosmap <- nrow(cand_dat_rosmap)
+#     top_thresh_rosmap <- quantile(abs(dat_sub_rosmap$ROSMAP_est), 1-top/nrow(dat_sub_rosmap))
+#     cand_dat_rosmap <- dat_sub_rosmap[abs(dat_sub_rosmap$ROSMAP_est)>top_thresh_rosmap,]
+#     precision[k, "cor_strength"] <- sum(cand_dat_rosmap$gene %in% cand_dat$gene & cand_dat_rosmap$PNAS==1 & cand_dat_rosmap$ROSMAP==1)/sum(cand_dat_rosmap$gene %in% cand_dat$gene)
+#     reca[k, "cor_strength"] <- sum(cand_dat_rosmap$gene %in% cand_dat$gene & cand_dat_rosmap$PNAS==1 & cand_dat_rosmap$ROSMAP==1)/sum(dat$PNAS==1 & dat$ROSMAP==1)
+#
+#   }
+#   precision[,"diff"] <- precision[, "cor_strength"]-precision[, "p"]
+#   prec_list[[nd]] <- precision
+#
+#   reca[,"diff"] <- reca[, "cor_strength"]-reca[, "p"]
+#   reca_list[[nd]] <- reca
+
+  # dat_sub <- dat[dat$PNAS_adj_p<0.05,]
+  # seq_vec <- seq(0,max(abs(dat_sub$PNAS_est)), length=30)
+  # dat_sub$group <- cut(abs(dat_sub$PNAS_est),  breaks = seq_vec)
+  # dat_sub_sum <- dat_sub %>% group_by(group) %>% summarise(prop = mean(PNAS))
+  # dat_sub_sum$method <- nd
+  # prop_dat <- rbind(prop_dat, dat_sub_sum)
+
+  # dat_sub <- dat[dat$ROSMAP_adj_p<0.05,]
+  # seq_vec <- seq(0,max(abs(dat_sub$ROSMAP_est)), length=30)
+  # dat_sub$group <- cut(abs(dat_sub$ROSMAP_est),  breaks = seq_vec)
+  # dat_sub_sum <- dat_sub %>% group_by(group) %>% summarise(prop = mean(ROSMAP))
+  # dat_sub_sum$method <- nd
+  # prop_dat <- rbind(prop_dat, dat_sub_sum)
+
+  # plist_pnas[[i]] <- ggplot(dat, aes(x=PNAS_est, y=PNAS_adj_p, color=as.factor(PNAS)))+
+  #   geom_point(alpha=0.1)+theme_bw()+facet_wrap(.~PNAS)+ylim(0,0.05)
+  plist_pnas[[i]] <- ggplot(dat, aes(x=abs(PNAS_est), y=PNAS_adj_p))+
+    geom_point(alpha=1)+
+    labs(title=nd)+theme_bw()
+  plist_rosmap[[i]] <- ggplot(dat, aes(x=abs(ROSMAP_est), y=ROSMAP_adj_p))+
+    geom_point(alpha=1)+
+    labs(title=nd)+theme_bw()
+}
+
+ggarrange(plotlist = plist_pnas, nrow=2, ncol=4, common.legend = T)
+ggarrange(plotlist = plist_rosmap, nrow=2, ncol=4)
+ggarrange(plotlist = rank_p, nrow=2, ncol=4)
+ggarrange(plotlist = rank_p_rosmap, nrow=2, ncol=4)
+
+
+prop_dat$est <- as.numeric(sub("^\\(([0-9.]+),.*$", "\\1", prop_dat$group))
+ggplot(prop_dat, aes(x=est, y=prop))+
+  geom_point()+geom_line()+facet_wrap(.~method,nrow=2)+theme_bw()
+
+
+# AUROC and PRROC ------------------------------------------------------------
+## p-value based approach ----------------------------------------------------------
+# p_cutoff <- c(seq(0,0.01, by=0.0001), seq(0.011,0.05, by=0.001), seq(0.06,1,by=0.01))
+p_cutoff <- c(0.001,0.005,0.01,0.05, 0.1, 0.15, 0.2)
+p_mat <- matrix(NA, nrow = length(p_cutoff)*ncol(ROSMAP_p_adj), ncol=13)
+colnames(p_mat) <- c("method","prec", "recall", "fpr", "cutoff", "count_rosmap",
+                     "count_pnas", "TNR", "NPV", "rosmap_prec", "rosmap_recall",
+                     "pnas_prec", "pnas_recall")
+p_mat[,1] <- rep(colnames(ROSMAP_p_adj), each=length(p_cutoff))
+
+
+for (i in 1:length(p_cutoff)){
+  thresh <- p_cutoff[i]
+  if(i%%10==0){print(i)}
+
+  for (j in 1:ncol(ROSMAP_p_adj)){
+    ROSMAP_deci <- as.numeric(ROSMAP_p_adj[,j]<thresh)
+    PNAS_deci <- as.numeric(PNAS_p_adj[,j]<thresh)
+    repduc_pair <- ROSMAP_deci==1 & PNAS_deci==1
+    p_mat[i+(j-1)*length(p_cutoff),"prec"] <- sum(repduc_pair==1 & true_reproduce_pair==1)/sum(repduc_pair==1)
+    p_mat[i+(j-1)*length(p_cutoff),"recall"] <- sum(repduc_pair==1 & true_reproduce_pair==1)/sum(true_reproduce_pair==1)
+    p_mat[i+(j-1)*length(p_cutoff),"fpr"] <- sum(repduc_pair==1 & true_reproduce_pair==0)/sum(true_reproduce_pair==0)
+    p_mat[i+(j-1)*length(p_cutoff),"cutoff"] <- thresh
+    p_mat[i+(j-1)*length(p_cutoff),"count_rosmap"] <- sum(ROSMAP_deci==1)
+    p_mat[i+(j-1)*length(p_cutoff),"count_pnas"] <- sum(PNAS_deci==1)
+    p_mat[i+(j-1)*length(p_cutoff),"TNR"] <- sum(repduc_pair==0 & true_reproduce_pair==0)/sum(true_reproduce_pair==0)
+    p_mat[i+(j-1)*length(p_cutoff),"NPV"] <- sum(repduc_pair==0 & true_reproduce_pair==0)/sum(repduc_pair==0)
+    p_mat[i+(j-1)*length(p_cutoff),"rosmap_prec"] <- sum(ROSMAP_deci==1 & ori_mat$ROSMAP==1)/sum(ROSMAP_deci==1)
+    p_mat[i+(j-1)*length(p_cutoff),"rosmap_recall"] <- sum(ROSMAP_deci==1 & ori_mat$ROSMAP==1)/sum(ori_mat$ROSMAP==1)
+    p_mat[i+(j-1)*length(p_cutoff),"pnas_prec"] <- sum(PNAS_deci==1 & ori_mat$PNAS==1)/sum(PNAS_deci==1)
+    p_mat[i+(j-1)*length(p_cutoff),"pnas_recall"] <- sum(PNAS_deci==1 & ori_mat$PNAS==1)/sum(ori_mat$PNAS==1)
+
+
+  }
+}
+
+# library(PRROC)
+# # pr <- pr.curve(scores.class0 = 1-ROSMAP_p_adj[,j], weights.class0 = ori_mat$ROSMAP==1, curve = TRUE)
+# # plot(pr)
+# # pr <- pr.curve(scores.class0 = 1-PNAS_p_adj[,j], weights.class0 = ori_mat$PNAS==1, curve = TRUE)
+# # plot(pr)
+# pr <- pr.curve(scores.class0 = 1-PNAS_p_adj$cscore_est, weights.class0 = ori_mat$PNAS==1, curve = TRUE)
+# plot(pr)
+# pr <- pr.curve(scores.class0 = abs(PNAS_est$cscore_est), weights.class0 = ori_mat$PNAS==1, curve = TRUE)
+# plot(pr)
+
+p_mat <- as.data.frame(p_mat)
+p_mat$prec <- as.numeric(p_mat$prec)
+p_mat$recall <- as.numeric(p_mat$recall)
+p_mat$rosmap_prec <- as.numeric(p_mat$rosmap_prec)
+p_mat$rosmap_recall <- as.numeric(p_mat$rosmap_recall)
+p_mat$pnas_prec <- as.numeric(p_mat$pnas_prec)
+p_mat$pnas_recall <- as.numeric(p_mat$pnas_recall)
+p_mat$fpr <- as.numeric(p_mat$fpr)
+p_mat$TNR <- as.numeric(p_mat$TNR)
+p_mat$NPV <- as.numeric(p_mat$NPV)
+p_mat$approach <- "p-value"
+p_mat$f1 <- 2/(1/p_mat$prec+1/p_mat$recall)
+p_mat$mcc <- sqrt(p_mat$recall*(1-p_mat$fpr)*p_mat$TNR*p_mat$NPV)
+ggplot(p_mat, aes(x=recall, y=prec, color=method))+
+  geom_point()+
+  geom_line()+theme_bw()
+
+ggplot(p_mat, aes(x=rosmap_recall, y=rosmap_prec, color=method))+
+  geom_point()+
+  geom_line()+theme_bw()+ylim(0,1)
+ggplot(p_mat, aes(x=pnas_recall, y=pnas_prec, color=method))+
+  geom_point()+
+  geom_line()+theme_bw()+ylim(0,1)
+ggplot(p_mat, aes(x=fpr, y=recall, color=method))+
+  geom_point()+
+  geom_line()+theme_bw()
+
+
+## correlation strength based approach ----------------------------------
+total_pair <- ncol(ROSMAP_sct_est)*(ncol(ROSMAP_sct_est)-1)/2
+# top_cutoff <- c(seq(1000,50000,by=1000), seq(52000, 100000, by=2000), seq(105000, nrow(ROSMAP_p), by=2000))
+# top_cutoff <- c(seq(10000,50000,by=1000), seq(52000, 100000, by=1000), seq(105000, 140000, by=1000))
+top_cutoff <- sort(c(1000, 5000, 10000, 50000, 100000, sum(ori_mat$ROSMAP==1), sum(ori_mat$PNAS==1)))
+
+top_mat <- matrix(NA, nrow = length(top_cutoff)*ncol(ROSMAP_est), ncol=5)
+colnames(top_mat) <- c("method","prec", "recall", "fpr", "cutoff")
+top_mat[,1] <- rep(colnames(ROSMAP_est), each=length(top_cutoff))
+for (i in 1:length(top_cutoff)){
+  thresh <- top_cutoff[i]
+  if(i%%10==0){print(i)}
+  for (j in 1:ncol(ROSMAP_est)){
+    cor_ROSMAP <- abs(ROSMAP_est[,j])
+    deci_ROSMAP <- as.numeric(cor_ROSMAP>quantile(cor_ROSMAP, 1-thresh/total_pair))
+    cor_PNAS <- abs(PNAS_est[,j])
+    deci_PNAS <- as.numeric(cor_PNAS>quantile(cor_PNAS, 1-thresh/total_pair))
+
+    repduc_pair <- deci_ROSMAP==1 & deci_PNAS==1
+    top_mat[i+(j-1)*length(top_cutoff),"prec"] <- sum(repduc_pair==1 & true_reproduce_pair==1)/sum(repduc_pair==1)
+    top_mat[i+(j-1)*length(top_cutoff),"recall"] <- sum(repduc_pair==1 & true_reproduce_pair==1)/sum(true_reproduce_pair==1)
+    top_mat[i+(j-1)*length(top_cutoff),"fpr"] <- sum(repduc_pair==1 & true_reproduce_pair==0)/sum(true_reproduce_pair==0)
+    top_mat[i+(j-1)*length(top_cutoff),"cutoff"] <- thresh
+  }
+}
+
+top_mat <- as.data.frame(top_mat)
+top_mat$prec <- as.numeric(top_mat$prec)
+top_mat$recall <- as.numeric(top_mat$recall)
+top_mat$fpr <- as.numeric(top_mat$fpr)
+top_mat$approach <- "cor-strength"
+top_mat$f1 <- 2/(1/top_mat$prec+1/top_mat$recall)
+
+top_mat_sub <- top_mat[top_mat$method=="cscore_est",]
+top_mat_sub$method <- "cscore_p"
+top_mat <- rbind(top_mat, top_mat_sub)
+ggplot(top_mat, aes(x=recall, y=prec, color=method))+
+  geom_point()+
+  geom_line()+theme_bw()
+# ggplot(top_mat, aes(x=fpr, y=recall, color=method))+
+#   geom_point()+
+#   geom_line()+theme_bw()
+
+
+top_mat %>% group_by(method) %>% summarise(max(f1))
+p_mat %>% group_by(method) %>% summarise(max(f1, na.rm = T))
+
+
+
+curve_dt_sub <- rbind(p_mat[,colnames(top_mat)], top_mat)
+ggplot(curve_dt_sub, aes(x=recall, y=prec, color=approach))+
+  geom_point()+geom_line()+facet_wrap(.~method, nrow=2)+
+  theme_bw()+labs(title="Reproducibility")
+
+ggplot(curve_dt_sub, aes(x=recall, y=prec, color=approach))+
+  geom_point()+geom_line()+facet_wrap(.~method, nrow=2)+xlim(0, 0.05)+
+  theme_bw()+labs(title="Reproducibility")
+
+# based on p-value--------------------------------------------------------------
+count_mat <- matrix(NA, nrow=2, ncol = 8)
+colnames(count_mat) <- colnames(ROSMAP_p_adj)
+rownames(count_mat) <- c("ROSMAP", "PNAS")
+count_mat[1,] <- apply(ROSMAP_p_adj, 2, function(x){sum(x<0.3)})
+count_mat[2,] <- apply(PNAS_p_adj, 2, function(x){sum(x<0.3)})
+knitr::kable(count_mat)
+
+count_mat <- matrix(NA, nrow=2, ncol = 8)
+colnames(count_mat) <- colnames(ROSMAP_p_adj)
+rownames(count_mat) <- c("ROSMAP", "PNAS")
+count_mat[1,] <- apply(ROSMAP_p_adj, 2, function(x){sum(x<0.01)})
+count_mat[2,] <- apply(PNAS_p_adj, 2, function(x){sum(x<0.01)})
+knitr::kable(count_mat)
+
+p_cutoff <- c(0.001, 0.005, 0.01, 0.05, 0.1)
+total_cor_PNAS <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(total_cor_PNAS) <- colnames(ROSMAP_p_adj)
+colnames(total_cor_PNAS) <- p_cutoff
+
+total_cor_ROSMAP <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(total_cor_ROSMAP) <- colnames(ROSMAP_p_adj)
+colnames(total_cor_ROSMAP) <- p_cutoff
+
+repduc_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_p) <- colnames(ROSMAP_p_adj)
+colnames(repduc_p) <- p_cutoff
+
+repduc_truth_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_truth_p) <- colnames(ROSMAP_p_adj)
+colnames(repduc_truth_p) <- p_cutoff
+
+prec_ROSMAP_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(prec_ROSMAP_p) <- colnames(ROSMAP_p_adj)
+colnames(prec_ROSMAP_p) <- p_cutoff
+
+prec_PNAS_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(prec_PNAS_p) <- colnames(ROSMAP_p_adj)
+colnames(prec_PNAS_p) <- p_cutoff
+
+for (i in 1:length(p_cutoff)){
+  thresh <- p_cutoff[i]
+  print(thresh)
+
+  for (j in 1:ncol(ROSMAP_p_adj)){
+    ROSMAP_deci <- as.numeric(ROSMAP_p_adj[,j]<thresh)
+    PNAS_deci <- as.numeric(PNAS_p_adj[,j]<thresh)
+    repduc_p[j,i] <- sum(ROSMAP_deci==1 & PNAS_deci==1)
+    repduc_truth_p[j,i] <- sum(ROSMAP_deci==1 & PNAS_deci==1 & ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+    prec_PNAS_p[j,i] <- sum(PNAS_deci==1 & ori_mat$PNAS==1)/sum(PNAS_deci==1)
+    prec_ROSMAP_p[j,i] <- sum(ROSMAP_deci==1 & ori_mat$ROSMAP==1)/sum(ROSMAP_deci==1)
+    total_cor_PNAS[j,i] <- sum(PNAS_deci==1)
+    total_cor_ROSMAP[j,i] <- sum(ROSMAP_deci==1)
+  }
+}
+
+
+prec_PNAS_p_long <- melt(prec_PNAS_p)
+colnames(prec_PNAS_p_long) <- c("Method", "Top", "PNAS")
+prec_ROSMAP_p_long <- melt(prec_ROSMAP_p)
+colnames(prec_ROSMAP_p_long) <- c("Method", "Top", "ROSMAP")
+repduc_p_long <- melt(repduc_p)
+colnames(repduc_p_long) <- c("Method", "Top", "Reproduce")
+
+repduc_prec_overlap_p <- left_join(prec_PNAS_p_long, prec_ROSMAP_p_long, by=c("Method", "Top"))
+repduc_prec_overlap_p <- left_join(repduc_prec_overlap_p, repduc_p_long, by=c("Method", "Top"))
+repduc_prec_overlap_p$avg <- (repduc_prec_overlap_p$PNAS+repduc_prec_overlap_p$ROSMAP)/2
+repduc_prec_overlap_p$Method <- recode(repduc_prec_overlap_p$Method,
+                                       sct="sctransform", prn="Pearson", spr="Spearman",
+                                       propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                                       noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+# color_setting <- c("CS-CORE \n(Empirical)"="darkgreen", "Noise \nRegularization"="#FF1F5B",
+#                    "CS-CORE"="brown", "sctransform"="#AF58BA",
+#                    "Pearson"="#FFC61E", "Spearman"="#F28522","Analytic PR"="#a3d0d4",
+#                    "propr"="#2166AC")
+
+color_setting <- c("CS-CORE \n(Empirical)"="brown", "Noise \nRegularization"="#AF58BA",
+                   "CS-CORE"="#339933", "sctransform"="#ff6699",
+                   "Pearson"="#F28522", "Spearman"="#ffff66","Analytic PR"="#99ccff",
+                   "propr"="#3366cc")
+
+p_prec_repduc_p <- ggplot(repduc_prec_overlap_p, aes(x=Reproduce, y=ROSMAP, color=Method))+
+  geom_point()+ geom_line(size=1)+ylim(c(0.2,1))+theme_bw()+
+  # geom_errorbar(aes(ymin = min, ymax = max),width=500)+
+  scale_colour_manual(values = color_setting)+
+  labs(title="P-value", x="# of reproducible pairs", y="Precision", shape="P-value cutoff")+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_prec_repduc_p
+
+p_prec_repduc_p_pnas <- ggplot(repduc_prec_overlap_p, aes(x=Reproduce, y=PNAS, color=Method))+
+  geom_point()+ geom_line(size=1)+ylim(c(0.2,1))+theme_bw()+
+  # geom_errorbar(aes(ymin = min, ymax = max),width=500)+
+  scale_colour_manual(values = color_setting)+
+  labs(title="P-value", x="# of reproducible pairs", y="Precision", shape="P-value cutoff")+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_prec_repduc_p_pnas
+
+
+inflation_p <- as.data.frame(as.table((repduc_p-repduc_truth_p)/repduc_p))
+inflation_p$Var1 <- recode(inflation_p$Var1,
+                           sct="sctransform", prn="Pearson", spr="Spearman",
+                           propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                           noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+reproduc_infla_p <- ggplot(inflation_p, aes(x=Var2, y=Freq, color=Var1, group=Var1))+
+  geom_point()+geom_line(size=1)+
+  labs(y="Misidentified reproducible pairs" , #y="Inflation",
+       x="P-value cutoffs", color="Method", title="P-value")+
+  theme_bw()+scale_color_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_infla_p
+
+
+
+
+inflation_p1 <- as.data.frame(as.table(repduc_p))
+inflation_p2 <- as.data.frame(as.table(repduc_truth_p))
+inflation_p1$group <- "Identified reproducible pairs"
+inflation_p2$group <- "True reproducible pairs"
+inflation_p1$Var1 <- recode(inflation_p1$Var1,
+                           sct="sctransform", prn="Pearson", spr="Spearman",
+                           propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                           noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+inflation_p2$Var1 <- recode(inflation_p2$Var1,
+                            sct="sctransform", prn="Pearson", spr="Spearman",
+                            propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                            noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+inflation_p1_sub <- inflation_p1[inflation_p1$Var2==max(p_cutoff),] %>% arrange(Var2, desc(Freq))
+inflation_p1$Var1 <- factor(inflation_p1$Var1, levels = unique(inflation_p1_sub$Var1))
+inflation_p2$Var1 <- factor(inflation_p2$Var1, levels = unique(inflation_p1_sub$Var1))
+
+
+reproduc_count_p <- ggplot()+
+  geom_bar(data=inflation_p1, mapping=aes(x=Var2, y=Freq, fill=Var1),
+           stat = "identity",position=position_dodge())+
+  labs(y="# of reproducible pairs", x="P-value cutoffs", fill="Method", title="P-value")+
+  theme_bw()+
+  scale_fill_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_count_p
+
+reproduc_count_true_p <- ggplot()+
+  geom_bar(data=inflation_p2, mapping=aes(x=Var2, y=Freq, fill=Var1),
+           stat = "identity",position=position_dodge())+
+  labs(y="# of true reproducible pairs", x="P-value cutoffs", fill="Method", title="P-value")+
+  theme_bw()+
+  scale_fill_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_count_true_p
+
+reproduc_count_p+reproduc_count_true_p
+
+
+
+# based on the unfiltered order instead of the gene cor-------------------------
+top_cutoff <- sort(c(1000, 5000, 10000, 50000, 100000, sum(ori_mat$ROSMAP==1), sum(ori_mat$PNAS==1)))
+repduc_top <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(repduc_top) <- colnames(ROSMAP_est)
+colnames(repduc_top) <- top_cutoff
+
+repduc_truth_top <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(repduc_truth_top) <- colnames(ROSMAP_est)
+colnames(repduc_truth_top) <- top_cutoff
+
+total_pair <- ncol(ROSMAP_sct_est)*(ncol(ROSMAP_sct_est)-1)/2
+
+prec_PNAS <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(prec_PNAS) <- colnames(ROSMAP_est)
+colnames(prec_PNAS) <- top_cutoff
+
+prec_ROSMAP <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(prec_ROSMAP) <- colnames(ROSMAP_est)
+colnames(prec_ROSMAP) <- top_cutoff
+
+for (i in 1:length(top_cutoff)){
+  thresh <- top_cutoff[i]
+  print(thresh)
+  for (j in 1:ncol(ROSMAP_est)){
+    cor_ROSMAP <- abs(ROSMAP_est[,j])
+    deci_ROSMAP <- as.numeric(cor_ROSMAP>quantile(cor_ROSMAP, 1-thresh/total_pair))
+    cor_PNAS <- abs(PNAS_est[,j])
+    deci_PNAS <- as.numeric(cor_PNAS>quantile(cor_PNAS, 1-thresh/total_pair))
+
+    repduc_top[j,i] <- sum(deci_ROSMAP==1 & deci_PNAS==1)
+    repduc_truth_top[j,i] <- sum(deci_ROSMAP==1 & deci_PNAS==1 & ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+    prec_PNAS[j,i] <- sum(deci_PNAS==1 & ori_mat$PNAS==1)/sum(deci_PNAS==1)
+    prec_ROSMAP[j,i] <- sum(deci_ROSMAP==1 & ori_mat$ROSMAP==1)/sum(deci_ROSMAP==1)
+  }
+}
+
+
+prec_PNAS_long <- melt(prec_PNAS)
+colnames(prec_PNAS_long) <- c("Method", "Top", "PNAS")
+prec_ROSMAP_long <- melt(prec_ROSMAP)
+colnames(prec_ROSMAP_long) <- c("Method", "Top", "ROSMAP")
+repduc_top_long <- melt(repduc_top)
+colnames(repduc_top_long) <- c("Method", "Top", "Reproduce")
+
+repduc_prec_overlap <- left_join(prec_PNAS_long, prec_ROSMAP_long, by=c("Method", "Top"))
+repduc_prec_overlap <- left_join(repduc_prec_overlap, repduc_top_long, by=c("Method", "Top"))
+repduc_prec_overlap$Method <- recode(repduc_prec_overlap$Method,
+                            sct="sctransform", prn="Pearson", spr="Spearman",
+                            propr="propr",ana_prn="Analytic PR",
+                            noise="Noise \nRegularization", cscore_est="CS-CORE")
+# shape_setting2 <- 1:length(top_cutoff)
+# names(shape_setting2) <- top_cutoff
+
+p_prec_repduc_unfil <- ggplot(repduc_prec_overlap, aes(x=Reproduce, y=ROSMAP, color=Method))+
+  geom_point()+ geom_line(size=1)+ylim(c(0.2,1))+theme_bw()+
+  scale_colour_manual(values = color_setting)+
+  labs(title="Correlation strength", x="# of reproducible pairs", y="Precision")+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_prec_repduc_unfil
+
+p_prec_repduc_unfil_pnas <- ggplot(repduc_prec_overlap, aes(x=Reproduce, y=PNAS, color=Method))+
+  geom_point()+ geom_line(size=1)+ylim(c(0,1))+theme_bw()+
+  scale_colour_manual(values = color_setting)+
+  labs(title="Correlation strength", x="# of reproducible pairs", y="Precision", shape="Top")+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+p_prec_repduc_unfil_pnas
+
+inflation_unfil_top <- as.data.frame(as.table((repduc_top-repduc_truth_top)/repduc_top))
+inflation_unfil_top$Var1 <- recode(inflation_unfil_top$Var1,
+                           sct="sctransform", prn="Pearson", spr="Spearman",
+                           propr="propr",ana_prn="Analytic PR",
+                           noise="Noise \nRegularization", cscore_est="CS-CORE")
+reproduc_infla_unfil <- ggplot(inflation_unfil_top, aes(x=Var2, y=Freq, color=Var1, group=Var1))+
+  geom_point()+geom_line(size=1)+
+  labs(y="Misidentified reproducible pairs", #y="Inflation",
+       x="Top", color="Method", title="Correlation strength")+
+  theme_bw()+scale_color_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_infla_unfil
+
+
+inflation_unfil_top1 <- as.data.frame(as.table(repduc_top))
+inflation_unfil_top2 <- as.data.frame(as.table(repduc_truth_top))
+inflation_unfil_top1$group <- "Identified reproducible pairs"
+inflation_unfil_top2$group <- "True reproducible pairs"
+inflation_unfil_top1$Var1 <- recode(inflation_unfil_top1$Var1,
+                            sct="sctransform", prn="Pearson", spr="Spearman",
+                            propr="propr",ana_prn="Analytic PR",
+                            noise="Noise \nRegularization", cscore_est="CS-CORE")
+inflation_unfil_top2$Var1 <- recode(inflation_unfil_top2$Var1,
+                            sct="sctransform", prn="Pearson", spr="Spearman",
+                            propr="propr",ana_prn="Analytic PR",
+                            noise="Noise \nRegularization", cscore_est="CS-CORE")
+inflation_unfil_top1_sub <- inflation_unfil_top1[inflation_unfil_top1$Var2==max(top_cutoff),] %>% arrange(desc(Freq))
+inflation_unfil_top1$Var1 <- factor(inflation_unfil_top1$Var1, levels = unique(inflation_unfil_top1_sub$Var1))
+inflation_unfil_top2$Var1 <- factor(inflation_unfil_top2$Var1, levels = unique(inflation_unfil_top1_sub$Var1))
+
+reproduc_count_unfil <- ggplot()+
+  geom_bar(data=inflation_unfil_top1, mapping=aes(x=Var2, y=Freq, fill=Var1),
+           stat = "identity",position=position_dodge())+
+  labs(y="# of reproducible pairs", x="Top", fill="Method", title="Correlation strength")+
+  theme_bw()+
+  scale_fill_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_count_unfil
+
+reproduc_count_true_unfil <- ggplot()+
+  geom_bar(data=inflation_unfil_top2, mapping=aes(x=Var2, y=Freq, fill=Var1),
+           stat = "identity",position=position_dodge())+
+  labs(y="# of true reproducible pairs", x="Top", fill="Method", title="Correlation strength")+
+  theme_bw()+
+  scale_fill_manual(values = color_setting)+
+  theme(plot.title = element_text(hjust=0.5),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+reproduc_count_true_unfil
+reproduc_count_unfil+reproduc_count_true_unfil
+
+format_supp <- theme(text = element_text(size = 14),
+                     legend.position="none")
+plot_rep_ori <- ggarrange(reproduc_count_unfil+format_supp, p_prec_repduc_unfil+format_supp,
+                          reproduc_count_true_unfil+format_supp,
+                          reproduc_infla_unfil+format_supp+ylim(0,1)+labs(y="Prop of misidentified pairs"),
+                          reproduc_count_p+format_supp,p_prec_repduc_p+format_supp,
+                          reproduc_count_true_p+format_supp,
+                          reproduc_infla_p+format_supp+ylim(0,1)+labs(y="Prop of misidentified pairs"), ncol=4,nrow=2,
+                          widths = c(1, 0.9, 1, 0.9),
+          labels = c("A", "B", "C", "D", "E", "F", "G", "H"))
+leg <- get_legend(reproduc_count_p+
+                    scale_fill_manual(values = color_setting,
+                                       breaks = sort(names(color_setting)),
+                                       labels = c("Analytic PR", "CS-CORE", "CS-CORE (Empirical)", "Noise Regularization",
+                                                  "Pearson", "propr", "sctransform", "Spearman"))+
+                    theme(legend.position = "bottom",
+                           text = element_text(size = 17),
+                           legend.spacing.x = unit(0.5, 'cm'))+
+                    guides(fill=guide_legend(nrow=2,byrow=TRUE)))
+
+
+pdf('mean_cor/semi_PD_sparse/figures/reproduc_v2.pdf', width = 12, height = 7.5, onefile = T)
+ggarrange(plot_rep_ori, leg, ncol=1, nrow=2, heights = c(10,1))
+dev.off()
+
+# plot_rep_ori <-annotate_figure(plot_rep_ori, top = text_grob("Reproducibility",  face = "bold", size = 16))
+
+# based on /gpfs/gibbs/pi/zhao/xs282/validation/biological_network/overlap_with_biologNet_STRING_v2_4_6_2023.R
+plot_string_ori <- ggarrange(string_count_unfil+format_supp, p_prec_string_unfil+format_supp,
+                             string_count_true_unfil+format_supp,
+                             string_infla_unfil+format_supp+ylim(0,0.5)+labs(y="Prop of misidentified overlaps"),
+                             string_count_p+format_supp,p_prec_string_p+format_supp,
+                             string_count_true_p+format_supp,
+                             string_infla_p+format_supp+ylim(0,0.5)+labs(y="Prop of misidentified overlaps"), ncol=4,nrow=2,
+                             widths = c(1, 0.95, 1, 0.95),labels = c("A", "B", "C", "D", "E", "F", "G", "H"))
+pdf('mean_cor/semi_PD_sparse/figures/string_v2.pdf', width = 12, height = 8, onefile = T)
+ggarrange(plot_string_ori, leg, ncol=1, nrow=2, heights = c(10,1))
+dev.off()
+
+# plot_string_ori <-annotate_figure(plot_string_ori, top = text_grob("Overlaps with STRING",  face = "bold", size = 16))
+#
+# pdf('mean_cor/semi_PD_sparse/figures/reproduc_string_v2.pdf', width = 14, height = 16, onefile = T)
+# ggarrange(ggarrange(plot_rep_ori, plot_string_ori, ncol=2, nrow = 1), leg, ncol=1, nrow=2, heights = c(10,0.7))
+# dev.off()
+
+leg <- get_legend(reproduc_infla_p+theme(legend.position = "right",
+                                         text = element_text(size = 17),
+                                         legend.spacing.x = unit(0.5, 'cm')))
+pdf('mean_cor/semi_PD_sparse/figures/prec_pnas_v2.pdf', width = 12, height = 3, onefile = T)
+ggarrange(NULL, ggarrange(p_prec_repduc_unfil_pnas+format_supp+labs(y="Precision (PNAS)"),
+                    p_prec_repduc_p_pnas+format_supp+labs(y="Precision (PNAS)"), ncol=2, nrow = 1, labels = c("A", "B")),
+          leg, NULL, ncol=4, nrow=1, widths = c(1.5,5,2,1))
+dev.off()
+
+# pdf('mean_cor/semi_PD_sparse/figures/reproduc_string_true_overlaps.pdf', width = 15, height = 10, onefile = T)
+# ggarrange(ggarrange(plot_rep_ori, plot_string_ori, ncol=2, nrow = 1), leg, ncol=1, nrow=2, heights = c(5,1))
+# dev.off()
+
+# leg_supp2 <- get_legend(reproduc_count_p+
+#                               theme(text = element_text(size = 14),legend.position = "bottom",
+#                                     legend.spacing.x = unit(0.5, 'cm'))+guides(alpha = "none"))
+#
+# plot_rep_ori_count <- ggarrange(reproduc_count_true_unfil+format_supp, reproduc_count_true_p+format_supp,labels = c("A","B"))
+# plot_rep_ori_count <-annotate_figure(plot_rep_ori_count, top = text_grob("Reproducibility",  face = "bold", size = 16))
+#
+# plot_string_ori_count <- ggarrange(string_count_true_unfil+format_supp, string_count_true_p+format_supp+labs(x="P-value cutoffs"),labels = c("C","D"))
+# plot_string_ori_count <-annotate_figure(plot_string_ori_count, top = text_grob("Overlaps with STRING",  face = "bold", size = 16))
+#
+# pdf('mean_cor/semi_PD_sparse/figures/reproduc_string_supp.pdf', width = 13, height = 5, onefile = T)
+# ggarrange(ggarrange(plot_rep_ori_count, plot_string_ori_count, ncol=2, nrow = 1), leg_supp2, ncol=1, nrow=2, heights = c(5,1))
+# dev.off()
+#
+# ggarrange(p_prec_string_p)
+# ggarrange(p_prec_repduc_unfil, p_prec_string_unfil, ncol=2, nrow=1, common.legend = T, legend="right")
+
+
+# fixed mis prop --------------------------------------------------------------
+
+# based on p-value--------------------------------------------------------------
+count_mat <- matrix(NA, nrow=2, ncol = 8)
+colnames(count_mat) <- colnames(ROSMAP_p_adj)
+rownames(count_mat) <- c("ROSMAP", "PNAS")
+count_mat[1,] <- apply(ROSMAP_p_adj, 2, function(x){sum(x<0.3)})
+count_mat[2,] <- apply(PNAS_p_adj, 2, function(x){sum(x<0.3)})
+knitr::kable(count_mat)
+
+count_mat <- matrix(NA, nrow=2, ncol = 8)
+colnames(count_mat) <- colnames(ROSMAP_p_adj)
+rownames(count_mat) <- c("ROSMAP", "PNAS")
+count_mat[1,] <- apply(ROSMAP_p_adj, 2, function(x){sum(x<0.01)})
+count_mat[2,] <- apply(PNAS_p_adj, 2, function(x){sum(x<0.01)})
+knitr::kable(count_mat)
+
+p_cutoff <- c(0.001, 0.005, 0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4)
+total_cor_PNAS <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(total_cor_PNAS) <- colnames(ROSMAP_p_adj)
+colnames(total_cor_PNAS) <- p_cutoff
+
+total_cor_ROSMAP <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(total_cor_ROSMAP) <- colnames(ROSMAP_p_adj)
+colnames(total_cor_ROSMAP) <- p_cutoff
+
+repduc_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_p) <- colnames(ROSMAP_p_adj)
+colnames(repduc_p) <- p_cutoff
+
+repduc_truth_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_truth_p) <- colnames(ROSMAP_p_adj)
+colnames(repduc_truth_p) <- p_cutoff
+
+prec_ROSMAP_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(prec_ROSMAP_p) <- colnames(ROSMAP_p_adj)
+colnames(prec_ROSMAP_p) <- p_cutoff
+
+prec_PNAS_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(prec_PNAS_p) <- colnames(ROSMAP_p_adj)
+colnames(prec_PNAS_p) <- p_cutoff
+
+for (i in 1:length(p_cutoff)){
+  thresh <- p_cutoff[i]
+  print(thresh)
+
+  for (j in 1:ncol(ROSMAP_p_adj)){
+    ROSMAP_deci <- as.numeric(ROSMAP_p_adj[,j]<thresh)
+    PNAS_deci <- as.numeric(PNAS_p_adj[,j]<thresh)
+    repduc_p[j,i] <- sum(ROSMAP_deci==1 & PNAS_deci==1)
+    repduc_truth_p[j,i] <- sum(ROSMAP_deci==1 & PNAS_deci==1 & ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+    prec_PNAS_p[j,i] <- sum(PNAS_deci==1 & ori_mat$PNAS==1)/sum(PNAS_deci==1)
+    prec_ROSMAP_p[j,i] <- sum(ROSMAP_deci==1 & ori_mat$ROSMAP==1)/sum(ROSMAP_deci==1)
+    total_cor_PNAS[j,i] <- sum(PNAS_deci==1)
+    total_cor_ROSMAP[j,i] <- sum(ROSMAP_deci==1)
+  }
+}
+
+
+repduc_p_long <- reshape2::melt(repduc_truth_p)
+colnames(repduc_p_long) <- c("Method", "Top", "Reproduce")
+
+inflation_p <- as.data.frame(as.table((repduc_p-repduc_truth_p)/repduc_p))
+colnames(inflation_p) <- c("Method", "cutoff", "Mis")
+inflation_p$true <- repduc_p_long$Reproduce
+
+
+# based on the unfiltered order instead of the gene cor-------------------------
+top_cutoff <- sort(c(seq(1000, 10000, by=1000), 20000,25000,30000,35000,40000,45000,50000))
+repduc_top <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(repduc_top) <- colnames(ROSMAP_est)
+colnames(repduc_top) <- top_cutoff
+
+repduc_truth_top <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(repduc_truth_top) <- colnames(ROSMAP_est)
+colnames(repduc_truth_top) <- top_cutoff
+
+total_pair <- ncol(ROSMAP_sct_est)*(ncol(ROSMAP_sct_est)-1)/2
+
+prec_PNAS <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(prec_PNAS) <- colnames(ROSMAP_est)
+colnames(prec_PNAS) <- top_cutoff
+
+prec_ROSMAP <- matrix(NA, nrow=7, ncol=length(top_cutoff))
+rownames(prec_ROSMAP) <- colnames(ROSMAP_est)
+colnames(prec_ROSMAP) <- top_cutoff
+
+for (i in 1:length(top_cutoff)){
+  thresh <- top_cutoff[i]
+  print(thresh)
+  for (j in 1:ncol(ROSMAP_est)){
+    cor_ROSMAP <- abs(ROSMAP_est[,j])
+    deci_ROSMAP <- as.numeric(cor_ROSMAP>quantile(cor_ROSMAP, 1-thresh/total_pair))
+    cor_PNAS <- abs(PNAS_est[,j])
+    deci_PNAS <- as.numeric(cor_PNAS>quantile(cor_PNAS, 1-thresh/total_pair))
+
+    repduc_top[j,i] <- sum(deci_ROSMAP==1 & deci_PNAS==1)
+    repduc_truth_top[j,i] <- sum(deci_ROSMAP==1 & deci_PNAS==1 & ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+    prec_PNAS[j,i] <- sum(deci_PNAS==1 & ori_mat$PNAS==1)/sum(deci_PNAS==1)
+    prec_ROSMAP[j,i] <- sum(deci_ROSMAP==1 & ori_mat$ROSMAP==1)/sum(deci_ROSMAP==1)
+  }
+}
+
+
+repduc_top_long <- melt(repduc_truth_top)
+colnames(repduc_top_long) <- c("Method", "Top", "Reproduce")
+
+inflation_unfil_top <- as.data.frame(as.table((repduc_top-repduc_truth_top)/repduc_top))
+colnames(inflation_unfil_top) <- c("Method", "cutoff", "Mis")
+inflation_unfil_top$true <- repduc_top_long$Reproduce
+inflation_unfil_top_sub <- inflation_unfil_top[inflation_unfil_top$Method=="cscore_est",]
+inflation_unfil_top_sub$Method <- "cscore_p"
+inflation_unfil_top <- rbind(inflation_unfil_top_sub, inflation_unfil_top)
+
+inflation_unfil_top$Method <- recode(inflation_unfil_top$Method,
+                            sct="sctransform", prn="Pearson", spr="Spearman",
+                            propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                            noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+inflation_p$Method <- recode(inflation_p$Method,
+                             sct="sctransform", prn="Pearson", spr="Spearman",
+                             propr="propr",ana_prn="Analytic PR",cscore_p="CS-CORE",
+                             noise="Noise \nRegularization", cscore_est="CS-CORE \n(Empirical)")
+
+
+repro_p_ls <- list()
+for (i in unique(inflation_p$Method)){
+  plot_dat1 <- inflation_p[inflation_p$Method==i,]
+  plot_dat1$group <- "P-value"
+  plot_dat2 <- inflation_unfil_top[inflation_unfil_top$Method==i,]
+  plot_dat2$group <- "Cor-strength"
+  plot_dat <- rbind(plot_dat1, plot_dat2)
+  repro_p_ls[[i]] <- ggplot(plot_dat, aes(x=Mis, y=true, color=group))+
+    geom_point(size=2)+geom_line(size=1)+labs(title=i, x="",
+                                  y="", color="")+
+    theme_bw()+
+    scale_colour_manual(values = c("P-value"="darkblue", "Cor-strength"="darkred"))+
+    theme(legend.position = "bottom")
+
+}
+
+repro_p_ls[["Pearson"]] <- repro_p_ls[["Pearson"]]+xlim(0,0.1)+ylim(0,1500)
+repro_p_ls[["propr"]] <- repro_p_ls[["propr"]]+xlim(0,0.4)+ylim(0,5000)
+repro_p_ls[["Spearman"]] <- repro_p_ls[["Spearman"]]+ylim(0,2500)+xlim(0,0.25)
+repro_p_ls[["sctransform"]] <- repro_p_ls[["sctransform"]]+xlim(0,0.2)
+repro_p_ls[["Analytic PR"]] <- repro_p_ls[["Analytic PR"]]+xlim(0,0.175)
+
+
+ggarrange(plotlist = repro_p_ls, nrow=2, ncol=4, common.legend = T, legend = "bottom")
+
+plots <- repro_p_ls
+legend <- get_legend(plots[[1]]+theme(text = element_text(size = 17)))
+adjusted_theme <- theme(legend.position = "none",text = element_text(size = 15),
+                        plot.title = element_text(hjust=0.5),
+                        axis.text.x = element_text(angle = 45, hjust = 1),
+                        plot.tag = element_text(size = 14, face = "bold", vjust = 1.3, hjust = -1.5),
+                        plot.tag.position = c(0,1),
+                        plot.margin = unit(c(0, 0.15, 0, 0), "cm"))
+
+plot_grid <- plot_grid(
+  plots[[6]] + adjusted_theme +labs(tag="A"),
+  plots[[8]] +adjusted_theme+labs(tag="B"),
+  plots[[5]] + adjusted_theme+labs(tag="C"),
+  plots[[7]] + adjusted_theme+labs(tag="D"),
+  plots[[2]] + adjusted_theme+labs(tag="E"),
+  plots[[4]] + adjusted_theme+labs(tag="F"),
+  plots[[1]] + adjusted_theme+labs(tag="G"),
+  plots[[3]] + adjusted_theme+labs(tag="H"),
+  ncol = 4, nrow = 2, align = "hv"
+)
+
+final_plot_with_labels <- ggdraw() +
+  draw_plot(plot_grid, 0.02, 0.09, 0.98, 0.9, hjust = 0) +
+  draw_label("Prop of misidentified reproducible pairs", x = 0.51, y = 0.08, vjust = -0.5, angle = 0, size = 15) +
+  draw_label("# of true reproducible pairs", x = 0, y = 0.55, vjust = 1.5, angle = 90, size = 15) +
+  draw_plot(legend, 0, 0, 1, 0.1)
+
+
+# Print the final plot
+print(final_plot_with_labels)
+
+pdf('mean_cor/semi_PD_sparse/figures/compare_reproduc_v2.pdf', width = 11, height = 7, onefile = T)
+print(final_plot_with_labels)
+dev.off()

@@ -1,0 +1,119 @@
+# null distribution from /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/NB_simu_IND_PNAS_and_ROSMAP_NC_Oli_11_14_2023.R
+# cor est from /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/NB_simu_PNAS_and_ROSMAP_NC_Oli_11_13_2023.R
+#              /gpfs/gibbs/pi/zhao/xs282/validation/mean_cor/estimate_cor_1000_abs_thresh_PNAS_and_ROSMAP_NC_Oli_11_15_2023.R
+library(matrixStats)
+setwd("/gpfs/gibbs/pi/zhao/xs282/validation/")
+
+seed <- 12052023
+set.seed(seed)
+
+
+############# ROSMAP
+in_path <- paste0('/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/simulation/')
+n_pair <- 1000*(1000-1)/2
+n_permu <- 1000
+nulll <- list()
+nulll[["sct"]] <-  matrix(nrow=n_pair, ncol=n_permu)
+nulll[["cscore_est"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["propr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["spr"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["ana_prn"]] <- matrix(nrow=n_pair, ncol=n_permu)
+nulll[["noise"]] <- matrix(nrow=n_pair, ncol=n_permu)
+
+for (i in 1:n_permu){
+  print(i)
+  path <- paste0(in_path, "/s",i,"/")
+  est_mat <- readRDS(paste0(path,'/est_mat.rds'))
+  nulll[["sct"]][,i] <- est_mat[,"sct"]
+  nulll[["cscore_est"]][,i] <- est_mat[,"cscore_est"]
+  nulll[["prn"]][,i] <- est_mat[,"prn"]
+  nulll[["propr"]][,i] <- est_mat[,"propr"]
+  nulll[["spr"]][,i] <- est_mat[,"spr"]
+  nulll[["ana_prn"]][,i] <- est_mat[,"ana_prn"]
+
+  est_mat_noise <- readRDS(paste0(path,'/est_mat_noise.rds'))
+  nulll[["noise"]][,i] <- est_mat_noise[,"noise"]
+}
+
+mean_mat <- data.frame(sct=rowMeans(nulll$sct), prn=rowMeans(nulll$prn),
+                       spr=rowMeans(nulll$spr), propr=rowMeans(nulll$propr),
+                       cscore_est=rowMeans(nulll$cscore_est),
+                       ana_prn=rowMeans(nulll$ana_prn), noise=rowMeans(nulll$noise))
+sd_mat <- data.frame(sct=rowSds(nulll$sct), prn=rowSds(nulll$prn),
+                     spr=rowSds(nulll$spr), propr=rowSds(nulll$propr),
+                     cscore_est=rowSds(nulll$cscore_est),
+                     ana_prn=rowSds(nulll$ana_prn), noise=rowSds(nulll$noise))
+
+path <- "/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/"
+gene_name <- readRDS(paste0('/gpfs/gibbs/pi/zhao/xs282/validation/permutation_our/real_data/','PNAS_EX_sel_gene.rds'))
+sctransform_prn <- readRDS(paste0(path,'/sctransform_pearson_cor.rds'))
+propr <- readRDS(paste0(path,'/propr_pr.rds'))
+spearman <- readRDS(paste0(path,'/spearman_cor.rds'))
+pearson <- readRDS(paste0(path,'/pearson_cor.rds'))
+cscore_p <- readRDS(paste0(path,'/cscore_p.rds'))
+cscore_est <- readRDS(paste0(path,'/cscore_est.rds'))
+ana_prn <- readRDS(paste0(path,'/ana_prn.rds'))
+noise <- readRDS(paste0(path,'/noise.rds'))
+
+sctransform_prn <- sctransform_prn[gene_name, gene_name]
+propr <- propr[gene_name, gene_name]
+spearman <- spearman[gene_name, gene_name]
+pearson <- pearson[gene_name, gene_name]
+cscore_p <- cscore_p[gene_name, gene_name]
+cscore_est <- cscore_est[gene_name, gene_name]
+ana_prn <- ana_prn[gene_name, gene_name]
+noise <- noise[gene_name, gene_name]
+
+est_mat <- data.frame(sct=sctransform_prn[upper.tri(sctransform_prn, diag = FALSE)],
+                      prn=pearson[upper.tri(pearson, diag=F)],
+                      spr=spearman[upper.tri(spearman, diag=F)],
+                      propr=propr[upper.tri(propr, diag=F)],
+                      cscore_p=cscore_p[upper.tri(cscore_p, diag=F)],
+                      cscore_est=cscore_est[upper.tri(cscore_est, diag=F)],
+                      ana_prn=ana_prn[upper.tri(ana_prn, diag = FALSE)],
+                      noise=noise[upper.tri(noise, diag = FALSE)])
+
+
+p_val <- data.frame(sct=pnorm(abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = F)+
+                      pnorm(-abs(est_mat$sct), mean = mean_mat$sct, sd=sd_mat$sct, lower.tail = T),
+                   prn=pnorm(abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = F)+
+                     pnorm(-abs(est_mat$prn), mean = mean_mat$prn, sd=sd_mat$prn, lower.tail = T),
+                   spr=pnorm(abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = F)+
+                     pnorm(-abs(est_mat$spr), mean = mean_mat$spr, sd=sd_mat$spr, lower.tail = T),
+                   propr=pnorm(abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = F)+
+                     pnorm(-abs(est_mat$propr), mean = mean_mat$propr, sd=sd_mat$propr, lower.tail = T),
+                   cscore_est=pnorm(abs(est_mat$cscore_est), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = F)+
+                     pnorm(-abs(est_mat$cscore_est), mean = mean_mat$cscore_est, sd=sd_mat$cscore_est, lower.tail = T),
+                   ana_prn=pnorm(abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = F)+
+                     pnorm(-abs(est_mat$ana_prn), mean = mean_mat$ana_prn, sd=sd_mat$ana_prn, lower.tail = T),
+                   noise=pnorm(abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = F)+
+                     pnorm(-abs(est_mat$noise), mean = mean_mat$noise, sd=sd_mat$noise, lower.tail = T))
+saveRDS(p_val, paste0("real/ind/ind_norm_p.rds"))
+
+set.seed(6212024)
+idx <- sample(1:nrow(p_val), 10000)
+prepare_data <- function(x, idx, name){
+  return(data.frame(emp=sort(x),
+                    unif=(1:length(idx))/(length(idx)),
+                    cor_method=name))
+}
+
+p_dat <- rbind(prepare_data(p_val$sct[idx], idx, "sctransform"),
+               prepare_data(p_val$prn[idx], idx, "Pearson"),
+               prepare_data(p_val$spr[idx], idx, "Spearman"),
+               prepare_data(p_val$ana_prn[idx], idx, "Analytic PR"),
+               prepare_data(p_val$propr[idx], idx, "propr"),
+               prepare_data(p_val$cscore_est[idx], idx, "CS-CORE"),
+               prepare_data(p_val$noise[idx], idx, "Noise \nRegularization"))
+
+pdf('figures/v3_norm_p/qq_our.pdf', width = 12, height = 2.5, onefile = T)
+ggplot(p_dat, aes(x=unif, y=emp))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1, col="red")+
+  facet_wrap(.~cor_method, nrow=1)+theme_bw()+
+  labs(x="Theoretical Quantiles", y="Sample Quantiles")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 14))
+dev.off()
+

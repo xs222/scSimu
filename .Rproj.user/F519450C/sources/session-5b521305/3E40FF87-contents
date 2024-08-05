@@ -1,0 +1,217 @@
+library(gridExtra)
+library(tidyverse)
+library(magrittr)
+library(rtracklayer)
+library(biomaRt)
+library(ggvenn)
+library(ggplot2)
+library(igraph)
+library(venn)
+library(data.table)
+library(ggpubr)
+library(tidyverse)
+library(matrixcalc)
+
+set.seed(11272023)
+setwd("/gpfs/gibbs/pi/zhao/xs282/validation/")
+source("/gpfs/gibbs/pi/zhao/xs282/validation/cscore_real_data_function.R")
+
+ROSMAP_oli_ct <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_sct_cor_NB_simu1000_abs_thresh.rds")
+PNAS_oli_ct <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_sct_cor_NB_simu1000_abs_thresh.rds")
+
+
+ROSMAP_ori_ests <- readRDS("mean_cor/semi_PD/simu/ROSMAP_NC_Oli_sct1000.rds")
+ROSMAP_ori_ests[abs(ROSMAP_ori_ests)<0.015] <- 0
+gene_name <- rownames(ROSMAP_ori_ests)
+mean(ROSMAP_ori_ests!=0)
+
+PNAS_ori_ests <- readRDS("mean_cor/semi_PD/simu/PNAS_NC_Oli_sct1000.rds")
+PNAS_ori_ests[abs(PNAS_ori_ests)<0.017] <- 0
+PNAS_ori_ests <- PNAS_ori_ests[gene_name, gene_name]
+mean(PNAS_ori_ests!=0)
+
+# original reproduce
+ori_mat <- data.frame(ROSMAP=ROSMAP_ori_ests[upper.tri(ROSMAP_ori_ests)],
+                      PNAS=PNAS_ori_ests[upper.tri(PNAS_ori_ests)])
+ori_mat <- as.data.frame(apply(ori_mat, 2, function(x){ifelse(x!=0,1,0)}))
+true_reproduce <- sum(ori_mat$PNAS==1 & ori_mat$ROSMAP==1)
+sum(ori_mat$ROSMAP>0)
+sum(ori_mat$PNAS>0)
+true_reproduce_pair <- ori_mat$PNAS==1 & ori_mat$ROSMAP==1
+
+# cor estimations
+ROSMAP_cscore <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_cscore1000_abs_thresh.rds")
+ROSMAP_cscore_p <- MatrixBH(ROSMAP_cscore$p_value)
+ROSMAP_cscore_p <- ROSMAP_cscore_p[gene_name, gene_name]
+ROSMAP_cscore_est <- ROSMAP_cscore$est[gene_name, gene_name]
+ROSMAP_cscore_est_filter <- ROSMAP_cscore_est
+ROSMAP_cscore_est_filter[ROSMAP_cscore_p >= 0.05] <- 0
+
+PNAS_cscore <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_cscore1000_abs_thresh.rds")
+PNAS_cscore_p <- MatrixBH(PNAS_cscore$p_value)
+PNAS_cscore_p <- PNAS_cscore_p[gene_name, gene_name]
+PNAS_cscore_est <- PNAS_cscore$est[gene_name, gene_name]
+PNAS_cscore_est_filter <- PNAS_cscore_est
+PNAS_cscore_est_filter[PNAS_cscore_p >= 0.05] <- 0
+
+ROSMAP_p <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_simu_norm_p.rds")
+ROSMAP_p_adj <- as.data.frame(apply(ROSMAP_p, 2, function(x){p.adjust(x, method = "BH")}))
+ROSMAP_p_adj$cscore_p <- ROSMAP_cscore_p[upper.tri(ROSMAP_cscore_p)]
+PNAS_p <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_simu_norm_p.rds")
+PNAS_p_adj <- as.data.frame(apply(PNAS_p, 2, function(x){p.adjust(x, method = "BH")}))
+PNAS_p_adj$cscore_p <- PNAS_cscore_p[upper.tri(PNAS_cscore_p)]
+ROSMAP_p$cscore_p <- ROSMAP_cscore$p_value[gene_name, gene_name][upper.tri(ROSMAP_cscore$p_value[gene_name, gene_name])]
+PNAS_p$cscore_p <- PNAS_cscore$p_value[gene_name, gene_name][upper.tri(PNAS_cscore$p_value[gene_name, gene_name])]
+
+ROSMAP_sct <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_sct1000_abs_thresh.rds")
+ROSMAP_sct_est <- ROSMAP_sct[gene_name, gene_name]
+PNAS_sct <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_sct1000_abs_thresh.rds")
+PNAS_sct_est <- PNAS_sct[gene_name, gene_name]
+
+ROSMAP_ana_prn <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_ana_prn1000_abs_thresh.rds")
+ROSMAP_ana_prn_est <- ROSMAP_ana_prn[gene_name, gene_name]
+PNAS_ana_prn <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_ana_prn1000_abs_thresh.rds")
+PNAS_ana_prn_est <- PNAS_ana_prn[gene_name, gene_name]
+
+ROSMAP_noise <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_noise1000_abs_thresh.rds")
+ROSMAP_noise_est <- ROSMAP_noise[gene_name, gene_name]
+PNAS_noise <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_noise1000_abs_thresh.rds")
+PNAS_noise_est <- PNAS_noise[gene_name, gene_name]
+
+ROSMAP_propr <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_propr1000_abs_thresh.rds")
+ROSMAP_propr_est <- ROSMAP_propr@matrix[gene_name, gene_name]
+PNAS_propr <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_propr1000_abs_thresh.rds")
+PNAS_propr_est <- PNAS_propr@matrix[gene_name, gene_name]
+
+ROSMAP_prn <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_prn1000_abs_thresh.rds")
+ROSMAP_prn_est <- ROSMAP_prn[gene_name, gene_name]
+PNAS_prn <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_prn1000_abs_thresh.rds")
+PNAS_prn_est <- PNAS_prn[gene_name, gene_name]
+
+ROSMAP_spr <- readRDS("mean_cor/semi_PD_sparse/simu/ROSMAP_NC_Oli_simu_spr1000_abs_thresh.rds")
+ROSMAP_spr_est <- ROSMAP_spr[gene_name, gene_name]
+PNAS_spr <- readRDS("mean_cor/semi_PD_sparse/simu/PNAS_NC_Oli_simu_spr1000_abs_thresh.rds")
+PNAS_spr_est <- PNAS_spr[gene_name, gene_name]
+
+ROSMAP_est <- data.frame(sct=ROSMAP_sct_est[upper.tri(ROSMAP_sct_est)],
+                         prn=ROSMAP_prn_est[upper.tri(ROSMAP_prn_est)],
+                         spr=ROSMAP_spr_est[upper.tri(ROSMAP_spr_est)],
+                         propr=ROSMAP_propr_est[upper.tri(ROSMAP_propr_est)],
+                         cscore_est=ROSMAP_cscore_est[upper.tri(ROSMAP_cscore_est)],
+                         ana_prn=ROSMAP_ana_prn_est[upper.tri(ROSMAP_ana_prn_est)],
+                         noise=ROSMAP_noise_est[upper.tri(ROSMAP_noise_est)])
+
+PNAS_est <- data.frame(sct=PNAS_sct_est[upper.tri(PNAS_sct_est)],
+                       prn=PNAS_prn_est[upper.tri(PNAS_prn_est)],
+                       spr=PNAS_spr_est[upper.tri(PNAS_spr_est)],
+                       propr=PNAS_propr_est[upper.tri(PNAS_propr_est)],
+                       cscore_est=PNAS_cscore_est[upper.tri(PNAS_cscore_est)],
+                       ana_prn=PNAS_ana_prn_est[upper.tri(PNAS_ana_prn_est)],
+                       noise=PNAS_noise_est[upper.tri(PNAS_noise_est)])
+colnames(ROSMAP_p)
+
+#-----------------------------------------------------------
+
+marginal_fit_ROSMAP = readRDS('marginal_fit/ROSMAP_NC_Oli_marginal_fit.rds')
+mu_ROSMAP <- marginal_fit_ROSMAP[gene_name,]$mu
+
+ncor_gene <- length(gene_name)
+mu_col_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene,byrow = T)
+mu_row_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene)
+
+# filtered
+tri = upper.tri(ROSMAP_ori_ests, diag = FALSE)
+idxs = which(tri, arr.ind = T)
+estimate_ROSMAP <- data.frame(id1=rownames(ROSMAP_ori_ests)[idxs[,1]],
+                              id2=colnames(ROSMAP_ori_ests)[idxs[,2]],
+                              ROSMAP_ori=ROSMAP_ori_ests[tri],
+                              mu_col_ROSMAP=mu_col_ROSMAP[tri],
+                              mu_row_ROSMAP=mu_row_ROSMAP[tri],
+                              ROSMAP_ori_ests=ROSMAP_ori_ests[tri])
+estimate_ROSMAP$log10mean_mu_ROSMAP <- log10(sqrt(10^estimate_ROSMAP$mu_col_ROSMAP*10^estimate_ROSMAP$mu_row_ROSMAP))
+estimate_ROSMAP$true_cor <- ifelse(abs(estimate_ROSMAP$ROSMAP_ori_ests)!=0, 1, 0)
+
+
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "hgnc_symbol", attributes= c("ensembl_gene_id","hgnc_symbol"),values=rownames(ROSMAP_ori_ests),mart= mart)
+G_list <- G_list %>% group_by(hgnc_symbol) %>%
+  dplyr::slice(1) %>% ungroup()
+unmapped <- rownames(ROSMAP_ori_ests)[!rownames(ROSMAP_ori_ests) %in% G_list$hgnc_symbol]
+ensembl <- c(unmapped, G_list$ensembl_gene_id)
+names(ensembl) <- c(unmapped, G_list$hgnc_symbol)
+estimate_ROSMAP$id1 <- ensembl[estimate_ROSMAP$id1]
+estimate_ROSMAP$id2 <- ensembl[estimate_ROSMAP$id2]
+estimate_ROSMAP <- estimate_ROSMAP %>%
+  mutate(grp = paste(pmax(id1, id2), pmin(id1, id2), sep = "_"))
+
+estimate_ROSMAP_filter <- estimate_ROSMAP
+
+estimate_ROSMAP$cscore_est <- ROSMAP_cscore_est[tri]
+estimate_ROSMAP$sct <- ROSMAP_sct_est[tri]
+estimate_ROSMAP$ana_prn <- ROSMAP_ana_prn_est[tri]
+estimate_ROSMAP$noise <- ROSMAP_noise_est[tri]
+estimate_ROSMAP$propr <- ROSMAP_propr_est[tri]
+estimate_ROSMAP$prn <- ROSMAP_prn_est[tri]
+estimate_ROSMAP$spr <- ROSMAP_spr_est[tri]
+estimate_ROSMAP$cscore_p <- estimate_ROSMAP$cscore_est
+
+
+p_cutoff <- c(0.001, 0.005, 0.01, 0.05, 0.1)
+repduc_p <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_p) <- colnames(ROSMAP_p_adj)
+colnames(repduc_p) <- p_cutoff
+
+repduc_p_mean <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_p_mean) <- colnames(ROSMAP_p_adj)
+colnames(repduc_p_mean) <- p_cutoff
+
+repduc_p_sd <- matrix(NA, nrow=8, ncol=length(p_cutoff))
+rownames(repduc_p_sd) <- colnames(ROSMAP_p_adj)
+colnames(repduc_p_sd) <- p_cutoff
+
+
+estimate_p <- estimate_ROSMAP[,1:9]
+estimate_p <- cbind(estimate_p, ROSMAP_p_adj)
+estimate_p$cscore_p <- ROSMAP_cscore_p[upper.tri(ROSMAP_cscore_p)]
+
+hist_data <- hist(estimate_p$log10mean_mu_ROSMAP, plot = FALSE, breaks = 20)
+breaks <- hist_data$breaks
+estimate_p$bins <- cut(estimate_p$log10mean_mu_ROSMAP, breaks = breaks)
+table(estimate_p$bins)
+
+for (i in 1:length(p_cutoff)){
+  thresh <- p_cutoff[i]
+  print(thresh)
+  
+  for (j in colnames(ROSMAP_p_adj)){
+    ROSMAP_deci <- as.numeric(ROSMAP_p_adj[,j]<thresh)
+    PNAS_deci <- as.numeric(PNAS_p_adj[,j]<thresh)
+    repduc_p[j,i] <- sum(ROSMAP_deci==1 & PNAS_deci==1)
+    
+    estimate_p$biological <- PNAS_p_adj[,j]<thresh
+    
+    hist_data2 <- hist(estimate_p$log10mean_mu_ROSMAP[ROSMAP_p_adj[,j]<thresh], 
+                       breaks = breaks, plot = FALSE)
+    ratio_counts <- hist_data2$counts / hist_data$counts
+    ratio_counts[is.na(ratio_counts)] <- 0
+    names(ratio_counts) <- names(table(estimate_p$bins))
+    
+    ROSMAP_deci_all <- estimate_p
+    ROSMAP_deci_all$prob <- ratio_counts[ROSMAP_deci_all$bins]
+    # random_string[[j]] <- replicate(100, sum(sample(ROSMAP_deci_all$biological, 
+    #                                      prob = ROSMAP_deci_all$prob, 
+    #                                      size = nrow(ROSMAP_deci), replace = F)))
+    bio_prob <- sum(ROSMAP_deci_all$prob[ROSMAP_deci_all$biological])/sum(ROSMAP_deci_all$prob)
+    repduc_p_mean[j,i] <- sum(ROSMAP_deci)*bio_prob
+    repduc_p_sd[j,i] <- sum(ROSMAP_deci)*bio_prob*(1-bio_prob)
+  }
+}
+
+repduc_p-repduc_p_mean
+(repduc_p-repduc_p_mean)/repduc_p_sd
+
+
+
+
+
+

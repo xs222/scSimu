@@ -1,0 +1,301 @@
+
+path <- "/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/"
+gene_name <- readRDS(paste0('/gpfs/gibbs/pi/zhao/xs282/validation/permutation_our/real_data/','PNAS_EX_sel_gene.rds'))
+sctransform_prn <- readRDS(paste0(path,'/sctransform_pearson_cor.rds'))
+propr <- readRDS(paste0(path,'/propr_pr.rds'))
+spearman <- readRDS(paste0(path,'/spearman_cor.rds'))
+pearson <- readRDS(paste0(path,'/pearson_cor.rds'))
+cscore_p <- readRDS(paste0(path,'/cscore_p.rds'))
+cscore_est <- readRDS(paste0(path,'/cscore_est.rds'))
+ana_prn <- readRDS(paste0(path,'/ana_prn.rds'))
+noise <- readRDS(paste0(path,'/noise.rds'))
+
+sctransform_prn <- sctransform_prn[gene_name, gene_name]
+propr <- propr[gene_name, gene_name]
+spearman <- spearman[gene_name, gene_name]
+pearson <- pearson[gene_name, gene_name]
+cscore_p <- cscore_p[gene_name, gene_name]
+cscore_est <- cscore_est[gene_name, gene_name]
+ana_prn <- ana_prn[gene_name, gene_name]
+noise <- noise[gene_name, gene_name]
+
+est_mat <- data.frame(sct=sctransform_prn[upper.tri(sctransform_prn, diag = FALSE)],
+                      prn=pearson[upper.tri(pearson, diag=F)],
+                      spr=spearman[upper.tri(spearman, diag=F)],
+                      propr=propr[upper.tri(propr, diag=F)],
+                      cscore_p=cscore_p[upper.tri(cscore_p, diag=F)],
+                      cscore_est=cscore_est[upper.tri(cscore_est, diag=F)],
+                      ana_prn=ana_prn[upper.tri(ana_prn, diag = FALSE)],
+                      noise=noise[upper.tri(noise, diag = FALSE)])
+
+
+marginal_fit_ROSMAP = readRDS('simulation/real_data/PNAS_Ex_simulated_marginal_fit.rds')
+mu_ROSMAP <- marginal_fit_ROSMAP[gene_name,]$mu
+
+ncor_gene <- length(gene_name)
+mu_col_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene,byrow = T)
+mu_row_ROSMAP <- matrix(mu_ROSMAP,ncor_gene,ncor_gene)
+
+tri = upper.tri(sctransform_prn, diag = FALSE)
+idxs = which(tri, arr.ind = T)
+estimate_ROSMAP <- data.frame(id1=rownames(sctransform_prn)[idxs[,1]],
+                              id2=colnames(sctransform_prn)[idxs[,2]],
+                              mu_col_ROSMAP=mu_col_ROSMAP[tri],
+                              mu_row_ROSMAP=mu_row_ROSMAP[tri])
+estimate_ROSMAP$log10mean_mu_ROSMAP <- log10(sqrt(10^estimate_ROSMAP$mu_col_ROSMAP*10^estimate_ROSMAP$mu_row_ROSMAP))
+mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
+G_list <- getBM(filters= "hgnc_symbol", attributes= c("ensembl_gene_id","hgnc_symbol"),values=rownames(sctransform_prn),mart= mart)
+G_list <- G_list %>% group_by(hgnc_symbol) %>%
+  dplyr::slice(1) %>% ungroup()
+unmapped <- rownames(sctransform_prn)[!rownames(sctransform_prn) %in% G_list$hgnc_symbol]
+ensembl <- c(unmapped, G_list$ensembl_gene_id)
+names(ensembl) <- c(unmapped, G_list$hgnc_symbol)
+estimate_ROSMAP$id1 <- ensembl[estimate_ROSMAP$id1]
+estimate_ROSMAP$id2 <- ensembl[estimate_ROSMAP$id2]
+estimate_ROSMAP <- estimate_ROSMAP %>%
+  mutate(grp = paste(pmax(id1, id2), pmin(id1, id2), sep = "_"))
+
+
+# p-value based approach
+p_val <- readRDS("real/ind/ind_norm_p.rds")
+ROSMAP_est <- est_mat
+p_val$cscore_p <- ROSMAP_est$cscore_p
+ROSMAP_p_adj <- as.data.frame(apply(p_val, 2, function(x){p.adjust(x, method = "BH")}))
+
+p_cor <- ROSMAP_p_adj<=0.05
+colSums(p_cor)
+
+## the expression bias for identified correlated gene pairs
+p_cor_exp <- cbind(p_cor, estimate_ROSMAP)
+p_cor_bias_list <- list()
+for (i in colnames(p_cor)){
+  p_cor_bias_list[[i]] <- ggplot(p_cor_exp, aes_string(x="log10mean_mu_ROSMAP", fill=i))+
+    geom_histogram(aes(y=..density..), alpha=0.5,  position = "identity")
+}
+ggarrange(plotlist = p_cor_bias_list, ncol=3, nrow=3)
+
+
+# # cor strength based approach - fixed threshold 
+# est_sub <- ROSMAP_est[c(10:13, 15:18)]
+# 
+# rank_thresh <- 200000
+# cor_strength_cor <- apply(est_sub, 2, function(x){
+#   abs(x)>quantile(abs(x), 1-rank_thresh/length(x))
+# })
+# colSums(cor_strength_cor)
+
+# cor strength based approach - variable threshold
+ROSMAP_est <- readRDS("real/oli/est_cor.rds")
+est_sub <- ROSMAP_est[c(10:13, 15:18)]
+est_sub$cscore_p <- est_sub$cscore_est
+
+rank_thresh <- colSums(p_cor)
+names(rank_thresh) <- colnames(p_cor)
+cor_strength_cor <- p_cor
+for (i in colnames(p_cor)){
+  cor_strength_cor[,i] <- abs(est_sub[,i])>quantile(abs(est_sub[,i]), 
+                                                    1-rank_thresh[i]/length(est_sub[,i]))
+}
+
+colSums(cor_strength_cor)
+
+## the expression bias for identified correlated gene pairs
+cor_strength_cor_exp <- cbind(cor_strength_cor, estimate_ROSMAP)
+cor_strength_cor_bias_list <- list()
+for (i in colnames(cor_strength_cor)[-3]){
+  cor_strength_cor_bias_list[[i]] <- ggplot(cor_strength_cor_exp, aes_string(x="log10mean_mu_ROSMAP", fill=i))+
+    geom_histogram(aes(y=..density..), alpha=0.5,  position = "identity")
+}
+ggarrange(plotlist = cor_strength_cor_bias_list, ncol=3, nrow=3)
+# cor_strength_cor_exp$cscore_p <- cor_strength_cor_exp$cscore_est
+
+
+
+# venn diagram
+par(mfrow=c(2, 4), mar = c(1,0.2,1,0.2))
+for (i in colnames(p_cor)){
+  my_ls <- list("p_val"=p_cor_exp$grp[p_cor_exp[,i]],
+                "cor_str" = cor_strength_cor_exp$grp[cor_strength_cor_exp[,i]])
+  venn(my_ls, main=i)
+}
+
+# compare the rank 
+set.seed(6212024)
+sample_idx <- sample(1:nrow(p_val), 50000)
+p_rank <- as.data.frame(apply(p_val, 2, function(x){rank(-x)}))
+cor_rank <- as.data.frame(apply(est_sub, 2, function(x){rank(abs(x))}))
+cor_rank$cscore_p <- cor_rank$cscore_est
+rank_ls <- list()
+for (i in colnames(p_cor)){
+  cand <- data.frame(p=p_rank[,i], cor=cor_rank[,i])[sample_idx,]
+  rank_ls[[i]] <- ggplot(cand, aes(x=p, y=cor))+
+    geom_point(alpha=0.1)+geom_smooth()+labs(title = i)+
+    geom_abline(slope=1, intercept = 0, color="red")
+}
+ggarrange(plotlist = rank_ls, ncol=4, nrow=2)
+
+# overlap with string
+hs_filter <- readRDS("STRING/hs_filter_10_4_2023.rds")
+hs_filter <- hs_filter %>%
+  mutate(grp = paste(pmax(protein1, protein2), pmin(protein1, protein2), sep = "_"))
+biological_net <- hs_filter[hs_filter$combined_score>500,]
+p_cor_exp_string <- p_cor_exp[p_cor_exp$grp %in% biological_net$grp,]
+colSums(p_cor_exp_string[1:8])
+
+cor_strength_cor_exp_string <- cor_strength_cor_exp[cor_strength_cor_exp$grp %in% biological_net$grp,]
+colSums(cor_strength_cor_exp_string[1:8])
+
+# weight
+# p_cor_fitted <- p_cor_exp
+# prop_p_ls <- list()
+# for (i in colnames(p_cor)){
+#   blue_hist <- hist(p_cor_exp$log10mean_mu_ROSMAP, plot = FALSE, breaks = 100)
+#   red_hist <- hist(p_cor_exp$log10mean_mu_ROSMAP[p_cor_exp[,i]], plot = FALSE, breaks = blue_hist$breaks)
+#   total_counts <- red_hist$counts + blue_hist$counts
+#   prop_dat <- data.frame(exp=blue_hist$mids,
+#                          prop=red_hist$counts / total_counts)
+#   fit_gene <- glm(as.formula(paste(i, "~ mu_col_ROSMAP*mu_row_ROSMAP")),
+#                   family=binomial(link='logit'),data=p_cor_exp)
+#   p_cor_fitted[,i] <- predict(fit_gene,newdata=p_cor_exp,type='response')
+#   
+#   prop_p_ls[[i]] <- ggplot(prop_dat, aes(x=exp, y=prop))+
+#     geom_line()+labs(title = i)+
+#     geom_line(data=p_cor_fitted, aes_string(x="log10mean_mu_ROSMAP", y=i), color="blue")
+# }
+# ggarrange(plotlist = prop_p_ls, ncol=4, nrow=2)
+
+blue_hist <- hist(p_cor_exp$log10mean_mu_ROSMAP, plot = FALSE, breaks = 50)
+prop_p_dat <- data.frame(exp=blue_hist$mids)
+p_cor_exp$categorized_values <- cut(p_cor_exp$log10mean_mu_ROSMAP, breaks = blue_hist$breaks, labels = blue_hist$mids)
+p_cor_exp$bio <- p_cor_exp$grp %in% biological_net$grp
+p_sample <- p_cor_exp
+
+for (i in colnames(p_cor)){
+  red_hist <- hist(p_cor_exp$log10mean_mu_ROSMAP[p_cor_exp[,i]], plot = FALSE, breaks = blue_hist$breaks)
+  prop_p_dat[,i] <- red_hist$counts / blue_hist$counts
+  
+  prop <- red_hist$counts / blue_hist$counts
+  names(prop) <- blue_hist$mids
+  p_sample[,i] <- prop[p_sample$categorized_values]
+}
+
+prop_p_dat_long <- reshape2::melt(prop_p_dat, id="exp")
+color_setting <- c("cscore_est"="darkgreen", "noise"="#FF1F5B",
+                   "cscore_p"="brown", "sct"="#AF58BA",
+                   "prn"="#FFC61E", "spr"="#F28522","ana_prn"="#a3d0d4",
+                   "propr"="#2166AC")
+ggplot(prop_p_dat_long, aes(x=exp, y=value, color=variable))+
+  geom_line()+scale_colour_manual(values = color_setting)+theme_bw()+
+  labs(y="Prop of correlated pairs", title="P-value")
+write.csv(p_sample, "real_data/p_sample.csv")
+write.csv(colSums(p_cor_exp[1:8]), "real_data/p_count.csv")
+
+## random sample the same number of correlated gene pairs
+overlap_p <- as.data.frame(colSums(p_cor_exp_string[1:8]))
+overlap_p$mean <- NA
+overlap_p$mean_equal <- NA
+overlap_p$sd <- NA
+overlap_p$sd_equal <- NA
+for (i in rownames(overlap_p)){
+  c_path <- paste0("real/oli/random_sample/", i, "/")
+  file_ls <- list.files(c_path)
+  c_vec <- c()
+  for (f in file_ls){
+    c_vec <- c(c_vec, read.table(paste0(c_path,f))[1,1])
+  }
+  overlap_p[i, "mean"] <- mean(c_vec)
+  overlap_p[i, "sd"] <- sd(c_vec)
+}
+
+for (i in rownames(overlap_p)){
+  c_path <- paste0("real/oli/random_sample_equal/", i, "/")
+  file_ls <- list.files(c_path)
+  c_vec <- c()
+  for (f in file_ls){
+    c_vec <- c(c_vec, read.table(paste0(c_path,f))[1,1])
+  }
+  overlap_p[i, "mean_equal"] <- mean(c_vec)
+  overlap_p[i, "sd_equal"] <- sd(c_vec)
+}
+
+overlap_p$diff1 <- overlap_p$`colSums(p_cor_exp_string[1:8])`-overlap_p$mean
+overlap_p$diff2 <- overlap_p$`colSums(p_cor_exp_string[1:8])`-overlap_p$mean_equal
+overlap_p$z1 <- overlap_p$diff1/overlap_p$sd
+overlap_p$z2 <- overlap_p$diff2/overlap_p$sd_equal
+
+
+
+
+## cor strength
+blue_hist <- hist(cor_strength_cor_exp$log10mean_mu_ROSMAP, plot = FALSE, breaks = 50)
+prop_cor_dat <- data.frame(exp=blue_hist$mids)
+cor_strength_cor_exp$categorized_values <- cut(cor_strength_cor_exp$log10mean_mu_ROSMAP, breaks = blue_hist$breaks, labels = blue_hist$mids)
+cor_strength_cor_exp$bio <- cor_strength_cor_exp$grp %in% biological_net$grp
+cor_strength_sample <- cor_strength_cor_exp
+
+for (i in colnames(cor_strength_cor)){
+  red_hist <- hist(cor_strength_cor_exp$log10mean_mu_ROSMAP[cor_strength_cor_exp[,i]], plot = FALSE, breaks = blue_hist$breaks)
+  prop_cor_dat[,i] <- red_hist$counts / blue_hist$counts
+  
+  prop <- red_hist$counts / blue_hist$counts
+  names(prop) <- blue_hist$mids
+  cor_strength_sample[,i] <- prop[cor_strength_sample$categorized_values]
+}
+
+prop_cor_dat_long <- reshape2::melt(prop_cor_dat, id="exp")
+color_setting <- c("cscore_est"="darkgreen", "noise"="#FF1F5B",
+                   "cscore_p"="brown", "sct"="#AF58BA",
+                   "prn"="#FFC61E", "spr"="#F28522","ana_prn"="#a3d0d4",
+                   "propr"="#2166AC")
+ggplot(prop_cor_dat_long, aes(x=exp, y=value, color=variable))+
+  geom_line()+scale_colour_manual(values = color_setting)+theme_bw()+
+  labs(y="Prop of correlated pairs", title="cor strength")
+write.csv(cor_strength_sample, "real_data/cor_strength_sample.csv")
+write.csv(colSums(cor_strength_cor_exp[1:8]), "real_data/cor_strength_count.csv")
+
+
+## random sample the same number of correlated gene pairs
+overlap_cor <- as.data.frame(colSums(cor_strength_cor_exp_string[1:8]))
+overlap_cor$mean <- NA
+overlap_cor$mean_equal <- NA
+overlap_cor$sd <- NA
+overlap_cor$sd_equal <- NA
+for (i in rownames(overlap_cor)){
+  c_path <- paste0("real/oli/random_sample_cor_strength/", i, "/")
+  file_ls <- list.files(c_path)
+  c_vec <- c()
+  for (f in file_ls){
+    c_vec <- c(c_vec, read.table(paste0(c_path,f))[1,1])
+  }
+  overlap_cor[i, "mean"] <- mean(c_vec)
+  overlap_cor[i, "sd"] <- sd(c_vec)
+}
+
+for (i in rownames(overlap_cor)){
+  c_path <- paste0("real/oli/random_sample_equal_cor_strength/", i, "/")
+  file_ls <- list.files(c_path)
+  c_vec <- c()
+  for (f in file_ls){
+    c_vec <- c(c_vec, read.table(paste0(c_path,f))[1,1])
+  }
+  overlap_cor[i, "mean_equal"] <- mean(c_vec)
+  overlap_cor[i, "sd_equal"] <- sd(c_vec)
+}
+
+overlap_cor$diff1 <- overlap_cor$`colSums(cor_strength_cor_exp_string[1:8])`-overlap_cor$mean
+overlap_cor$diff2 <- overlap_cor$`colSums(cor_strength_cor_exp_string[1:8])`-overlap_cor$mean_equal
+overlap_cor$z1 <- overlap_cor$diff1/overlap_cor$sd
+overlap_cor$z2 <- overlap_cor$diff2/overlap_cor$sd_equal
+
+overlap_cor_sub <- overlap_cor[,c(1:3, 6, 7)]
+colnames(overlap_cor_sub) <- c("overlap (cor)", "mean (cor)", "mean equal (cor)",
+                               "diff1 (cor)", "diff2 (cor)")
+overlap_p_sub <- overlap_p[,c(1:3, 6, 7)]
+colnames(overlap_p_sub) <- c("overlap (p)", "mean (p)", "mean equal (p)",
+                               "diff1 (p)", "diff2 (p)")
+overlap_sub <- cbind(overlap_cor_sub, overlap_p_sub)
+overlap_sub <- overlap_sub[sort(colnames(overlap_sub), decreasing = T)]
+
+
+
+

@@ -1,0 +1,105 @@
+upper2matrix <- function(est, gene_name){
+  mat <- matrix(0, nrow=length(gene_name), ncol=length(gene_name))
+  rownames(mat) <- colnames(mat) <- gene_name
+  mat[upper.tri(mat)] <- est
+  mat <- mat + t(mat)
+  diag(mat) <- 1
+  return(mat)
+}
+
+enrich_plot <- function(enrich_list, cluster){
+  enrich_p <- list()
+  k <- 0
+  for (i in 1:max(cluster$memb)){
+    if (length(enrich_list[[i]]@result$ONTOLOGY)!=0){
+      k <- k+1
+      enrich_p[[k]] <- dotplot(enrich_list[[i]])+labs(title=i)
+    }
+  }
+  return(enrich_p)
+}
+
+Clustering = function(adj, genes, type="unsigned", power = 1,  
+                      min_members = 10, TOM_clustering = F, deepSplit = 2){
+  cluster_mat = abs(adj)
+  if (TOM_clustering) {
+    adj = adjacency.fromSimilarity(adj, type=type, power = power)
+    dissTOM = adj
+    TOM = TOMsimilarity(adj)
+    dissTOM = 1 - TOM
+    rownames(dissTOM) = genes
+    colnames(dissTOM) = genes
+    cluster_mat = dissTOM
+    dist_cor = as.dist(cluster_mat)
+  }
+  else {
+    dist_cor = dist(cluster_mat)
+  }
+  hclust_dist = hclust(dist_cor, method = "average")
+  memb = cutreeDynamic(dendro = hclust_dist, distM = cluster_mat, 
+                       deepSplit = deepSplit, pamRespectsDendro = FALSE, minClusterSize = min_members)
+  names(memb) = genes
+  memb_tab <- table(memb)
+  print(memb_tab)
+  major_clusters = names(memb_tab)[memb_tab > 0]
+  clusters = lapply(major_clusters, function(i_k) which(memb == 
+                                                          i_k) %>% names)
+  return(list(clusters = clusters, memb = memb, dist=dist_cor))
+}
+
+
+Clustering_cuttree = function(adj, genes, type="unsigned", power = 1,  
+                      k=3, TOM_clustering = F){
+  cluster_mat = abs(adj)
+  if (TOM_clustering) {
+    adj = adjacency.fromSimilarity(adj, type=type, power = power)
+    dissTOM = adj
+    TOM = TOMsimilarity(adj)
+    dissTOM = 1 - TOM
+    rownames(dissTOM) = genes
+    colnames(dissTOM) = genes
+    cluster_mat = dissTOM
+    dist_cor = as.dist(cluster_mat)
+  }
+  else {
+    dist_cor = dist(cluster_mat)
+  }
+  hclust_dist = hclust(dist_cor, method = "average")
+  memb = cutree(hclust_dist, k = k)
+  names(memb) = genes
+  memb_tab <- table(memb)
+  print(memb_tab)
+  major_clusters = names(memb_tab)[memb_tab > 0]
+  clusters = lapply(major_clusters, function(i_k) which(memb == 
+                                                          i_k) %>% names)
+  return(list(clusters = clusters, memb = memb))
+}
+
+Clustering_hi = function(adj, genes, min_members = 10, deepSplit = 2){
+  cluster_mat = adj
+  dist_cor = dist(cluster_mat)
+  hclust_dist = hclust(dist_cor, method = "complete")
+  memb = cutreeDynamic(dendro = hclust_dist, distM = cluster_mat, 
+                       deepSplit = deepSplit, pamRespectsDendro = FALSE, minClusterSize = min_members)
+  names(memb) = genes
+  memb_tab <- table(memb)
+  print(memb_tab)
+  major_clusters = names(memb_tab)[memb_tab > 0]
+  clusters = lapply(major_clusters, function(i_k) which(memb == 
+                                                          i_k) %>% names)
+  return(list(clusters = clusters, memb = memb, dist=dist_cor))
+}
+
+Clustering_hi_cuttree = function(adj, genes, k = 10){
+  cluster_mat = adj
+  dist_cor = dist(cluster_mat)
+  hclust_dist = hclust(dist_cor, method = "complete")
+  memb = cutree(hclust_dist, k = k)
+  names(memb) = genes
+  memb_tab <- table(memb)
+  print(memb_tab)
+  major_clusters = names(memb_tab)[memb_tab > 0]
+  clusters = lapply(major_clusters, function(i_k) which(memb == 
+                                                          i_k) %>% names)
+  return(list(clusters = clusters, memb = memb, dist=dist_cor))
+}

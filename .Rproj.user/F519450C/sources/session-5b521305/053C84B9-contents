@@ -1,0 +1,117 @@
+---
+title: "Simulating Drop-seq scRNA count data"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{intro}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(scSimu)
+```
+
+# Load data
+
+Here we utilize the T cells from 2,700 PBMC from Seurat.
+
+```{r}
+SeuratData::InstallData("pbmc3k")
+library(Seurat)
+library(SeuratData)
+library(ggplot2)
+library(patchwork)
+pbmc3k.final <- LoadData("pbmc3k", type = "pbmc3k.final")
+pbmc3k.final <- UpdateSeuratObject(pbmc3k.final)
+pbmc3k.final
+table(pbmc3k.final$seurat_annotations)
+```
+
+```{r}
+pbmc3k.T <- subset(pbmc3k.final, subset = seurat_annotations %in% c("Naive CD4 T", "Memory CD4 T", "CD8 T"))
+pbmc3k.T
+```
+
+# Estimate marginal parameters
+
+```{r}
+pbmc3k_count <- as.matrix(pbmc3k.T@assays$RNA@counts)
+marginal_para <- marginal_fit(pbmc3k_count)
+```
+
+Check the relationship between mu and alpha.
+
+```{r}
+ggplot(marginal_para, aes(x=mu, y=alpha))+
+  geom_point()+labs(title = "log10(alpha) v.s. log10(mu)")+
+  xlab("log10(mu)")+ylab("log10(alpha)")
+```
+
+Fit a smooth curve between mu and alpha using the major cluster
+
+```{r}
+marginal_para$up <- ifelse(marginal_para$alpha>3.5, "upper","lower")
+ggplot(marginal_para, aes(x=mu, y=alpha, color=up))+
+  geom_point()+labs(title = "log10(alpha) v.s. log10(mu)")+
+  xlab("log10(mu)")+ylab("log10(alpha)")
+
+## fit line (only use the major cluster)
+marginal_para_sel <- marginal_para[marginal_para$up=="lower",]
+## kernel smooth
+km5 <- ksmooth(marginal_para_sel$mu, marginal_para_sel$alpha,
+               kernel="normal", bandwidth = bw.SJ(marginal_para_sel$mu)*5)
+
+ksmooth_df <- data.frame(mu = km5$x, alpha = km5$y)
+# Plot the data and the fitted line
+ggplot() +
+  geom_point(data = marginal_para, aes(x = mu, y = alpha), alpha = 0.6) +
+  geom_line(data = ksmooth_df, aes(x = mu, y = alpha), color = "red", size = 1) +
+  labs(title = "Scatter Plot with Fitted Line",
+       x = "log10(mu)",
+       y = "log10(alpha)") 
+```
+
+Use the fitted curve to find alpha.
+
+```{r}
+log10mu <- marginal_para$mu
+gene_name <- marginal_para$gene
+names(log10mu) <- gene_name
+mu <- 10^log10mu
+
+fitted_trend <- data.frame(mu=km5$x, alpha=km5$y)
+log10alpha <- rep(NA,nrow(marginal_para))
+names(log10alpha) <- marginal_para$gene
+for (i in 1:nrow(marginal_para)){
+  idx <- which.min(abs(log10mu[i]-fitted_trend$mu))
+  log10alpha[i] <- fitted_trend$alpha[idx]
+}
+alpha <- 10^log10alpha
+```
+
+
+# Simulate independent data
+
+```{r}
+simu_ind <- scSimu(mu, alpha, pbmc3k_count)
+```
+
+# Simulate correlated data
+
+Consider the correlation structure for highly expressed genes.
+
+```{r}
+marginal_para <- marginal_para[order(marginal_para$mu, decreasing = T),]
+cor_gene <- marginal_para$gene[1:500]
+simu_cor <- scSimu(mu, alpha, pbmc3k_count, IND = F, cor_gene = cor_gene)
+```
+
+
+

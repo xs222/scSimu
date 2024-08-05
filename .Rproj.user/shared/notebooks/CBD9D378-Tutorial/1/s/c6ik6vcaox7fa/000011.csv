@@ -1,0 +1,16 @@
+"0","marginal_para <- marginal_fit(pbmc3k_count)
+"
+"2","Make initial dispersion estimate
+"
+"2","Make initial beta estimate
+"
+"2","Estimate beta
+"
+"2","Estimate dispersion
+"
+"2","Fit dispersion trend
+"
+"2","Shrink dispersion estimates
+"
+"2","Estimate beta again
+"

@@ -1,0 +1,171 @@
+library(ggplot2)
+library(ggridges)
+library(ggpubr)
+library(dplyr)
+
+nulll <- readRDS(paste0("/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/null_simu_1000.RDS"))
+nulll_noise <- readRDS("/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/null_simu_1000_noise.RDS")
+path <- "/gpfs/gibbs/pi/zhao/xs282/validation/simulation/real_data/"
+gene_name <- readRDS(paste0('/gpfs/gibbs/pi/zhao/xs282/validation/permutation_our/real_data/','PNAS_EX_sel_gene.rds'))
+idx <- readRDS('/gpfs/gibbs/pi/zhao/xs282/validation/permutation_our/real_data/permutation/idx.rds')
+
+sctransform_prn <- readRDS(paste0(path,'/sctransform_pearson_cor.rds'))
+propr <- readRDS(paste0(path,'/propr_pr.rds'))
+spearman <- readRDS(paste0(path,'/spearman_cor.rds'))
+pearson <- readRDS(paste0(path,'/pearson_cor.rds'))
+cscore_p <- readRDS(paste0(path,'/cscore_p.rds'))
+cscore_est <- readRDS(paste0(path,'/cscore_est.rds'))
+ana_prn <- readRDS(paste0(path,'/ana_prn.rds'))
+noise <- readRDS(paste0(path,'/noise.rds'))
+  
+sctransform_prn <- sctransform_prn[gene_name, gene_name]
+propr <- propr[gene_name, gene_name]
+spearman <- spearman[gene_name, gene_name]
+pearson <- pearson[gene_name, gene_name]
+cscore_p <- cscore_p[gene_name, gene_name]
+cscore_est <- cscore_est[gene_name, gene_name]
+ana_prn <- ana_prn[gene_name, gene_name]
+noise <- noise[gene_name, gene_name]
+
+est_mat <- data.frame(sct=sctransform_prn[upper.tri(sctransform_prn, diag = FALSE)][idx],
+                      prn=pearson[upper.tri(pearson, diag=F)][idx],
+                      spr=spearman[upper.tri(spearman, diag=F)][idx],
+                      propr=propr[upper.tri(propr, diag=F)][idx],
+                      cscore_p=cscore_p[upper.tri(cscore_p, diag=F)][idx],
+                      cscore_est=cscore_est[upper.tri(cscore_est, diag=F)][idx],
+                      ana_prn=ana_prn[upper.tri(ana_prn, diag = FALSE)][idx],
+                      noise=noise[upper.tri(noise, diag = FALSE)][idx])
+
+n_permu <- 1000
+deci <- data.frame(sct=rowSums(abs(nulll$sct)>abs(est_mat$sct))/n_permu,
+                   prn=rowSums(abs(nulll$prn)>abs(est_mat$prn))/n_permu,
+                   spr=rowSums(abs(nulll$spr)>abs(est_mat$spr))/n_permu,
+                   propr=rowSums(abs(nulll$propr)>abs(est_mat$propr))/n_permu,
+                   cscore_est=rowSums(abs(nulll$cscore_est)>abs(est_mat$cscore_est))/n_permu,
+                   ana_prn=rowSums(abs(nulll$ana_prn)>abs(est_mat$ana_prn))/n_permu,
+                   noise=rowSums(abs(nulll_noise)>abs(est_mat$noise))/n_permu,
+                   cscore_p=rowSums(nulll$cscore_p<est_mat$cscore_p)/n_permu)
+# deci[is.na(deci)] <- 0
+
+prepare_data <- function(x, idx, name){
+  return(data.frame(emp=sort(x),
+                    unif=(1:length(idx))/(length(idx)),
+                    cor_method=name))
+}
+
+p_dat <- rbind(prepare_data(deci$sct, idx, "sctransform"),
+               prepare_data(deci$prn, idx, "Pearson"),
+               prepare_data(deci$spr, idx, "Spearman"),
+               prepare_data(deci$ana_prn, idx, "Analytic PR"),
+               prepare_data(deci$propr, idx, "propr"),
+               prepare_data(deci$cscore_est, idx, "CS-CORE"),
+               prepare_data(deci$noise, idx, "Noise \nRegularization"))
+
+pdf('figures/v2/qq_our.pdf', width = 12, height = 2.5, onefile = T)
+ggplot(p_dat, aes(x=unif, y=emp))+
+  geom_point()+
+  geom_abline(intercept = 0, slope = 1, col="red")+
+  facet_wrap(.~cor_method, nrow=1)+theme_bw()+
+  labs(x="Theoretical Quantiles", y="Sample Quantiles")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        text = element_text(size = 14))
+dev.off()
+
+
+
+est_mat
+deci
+
+cor_strength_thresh <- c(0,0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2)
+p_cutoff <- 0.05
+fdr_p_cut <- matrix(NA, nrow=ncol(deci), ncol=length(cor_strength_thresh))
+rownames(fdr_p_cut) <- colnames(deci)
+colnames(fdr_p_cut) <- cor_strength_thresh
+
+for (k in cor_strength_thresh){
+  for (j in rownames(fdr_p_cut)){
+    ROSMAP_deci <- deci[abs(est_mat[,j])>=k,]
+    total <- nrow(ROSMAP_deci)
+    ROSMAP_deci <- ROSMAP_deci[p.adjust(ROSMAP_deci[,j], method = "BH")<p_cutoff,]
+    fdr_p_cut[j,as.character(k)] <- dim(ROSMAP_deci)[1]/total
+  }
+}
+fdr_p_cut
+
+marginal_fit_fn <- '/gpfs/gibbs/pi/zhao/xs282/coexp-sc/output/marginal_fit/PNAS_Ex_marginal_fit.rds'
+vanilla_ex <- readRDS(marginal_fit_fn)
+rownames(vanilla_ex) <- vanilla_ex$gene
+mu <- vanilla_ex[gene_name, ]$mu
+mu_row <- matrix(mu, nrow = length(gene_name), ncol = length(gene_name))
+mu_col <- matrix(mu, nrow = length(gene_name), ncol = length(gene_name), byrow = T)
+deci_new <- deci
+deci$mu_row <- mu_row[upper.tri(mu_row)][idx]
+deci$mu_col <- mu_col[upper.tri(mu_col)][idx]
+deci$mean_exp <- sqrt(10^deci$mu_row*10^deci$mu_col)
+
+deci_long <- melt(deci, id.vars = c("mu_row","mu_col", "mean_exp"))
+
+ggplot(deci_long, aes(x=mean_exp, y=value, col=variable))+
+  geom_point(alpha=0.1)+
+  geom_smooth()+theme_bw()+
+  facet_wrap(~variable)
+
+est_mat_new <- est_mat
+est_mat_new$cscore_p <- est_mat_new$cscore_est
+p_list <- list()
+for (i in colnames(est_mat)){
+  pdata <- data.frame(est=est_mat_new[,i],
+                      p=deci[,i])
+  p_list[[i]] <- ggplot(pdata, aes(x=est, y=p))+
+    geom_point(alpha=0.1)+geom_smooth()+theme_bw()+
+    labs(title=i)
+}
+ggarrange(plotlist=p_list, ncol=4, nrow=2)
+
+par(mfrow=c(2,2))
+hist(abs(nulll$sct)[81,], xlim = c(0,0.02), main=NULL)
+abline(v=abs(est_mat$sct[81]), col="red", lwd=2)
+hist(abs(nulll$sct)[100,], xlim = c(0,0.02), main=NULL)
+abline(v=abs(est_mat$sct[100]), col="red", lwd=2)
+hist(abs(nulll$sct)[500,], xlim = c(0,0.02), main=NULL)
+abline(v=abs(est_mat$sct[500]), col="red", lwd=2)
+hist(abs(nulll$sct)[800,], xlim = c(0,0.02), main=NULL)
+abline(v=abs(est_mat$sct[800]), col="red", lwd=2)
+
+
+# --------------------------------------------------------------
+qqunif_fun <- function(x, idx){
+  p <- ggplot()+
+    geom_point(aes(x=(1:length(idx))/(length(idx)+1), y=sort(x)))+
+    geom_abline(intercept=0, slope=1, color="red")+
+    labs(x="Theoretical Quantiles", y="Sample Quantiles")+
+    theme_classic()
+  return(p)
+}
+
+p1 <- qqunif_fun(deci$sct, idx)+labs(title="SCTransform")
+p2 <- qqunif_fun(deci$prn, idx)+labs(title="Pearson")
+p3 <- qqunif_fun(deci$spr, idx)+labs(title="Spearman")
+p4 <- qqunif_fun(deci$ana_prn, idx)+labs(title="Analytic Pearson")
+p5 <- qqunif_fun(deci$propr, idx)+labs(title="propr")
+p6 <- qqunif_fun(deci$cscore_est, idx)+labs(title="CS-CORE")
+p7 <- qqunif_fun(deci$cscore_p, idx)+labs(title="CS-CORE(p-value)")
+p8 <- qqunif_fun(deci$noise, idx)+labs(title="Noise Regularization")
+
+ggarrange(p1,p2,p3,p4,p5,p6,p7,p8, ncol=4, nrow=2)
+
+pdf('compare_simulation/compare_simu_multi_data/plot/qq_our.pdf', width = 16, height = 2.5, onefile = T)
+ggarrange(p1,p2,p3,p4,p5,p6,p8, ncol=7, nrow=1)
+dev.off()
+
+hist(deci$sct)  
+hist(deci$prn)  
+hist(deci$spr)  
+hist(deci$propr)  
+hist(deci$cscore_est) 
+hist(deci$ana_prn)  
+hist(deci$cscore_p)
+plot((1:length(idx))/(length(idx)+1),deci$cscore_est)
+
+cscore_p <- 10^(-est_mat$cscore_p)
+hist(cscore_p)
