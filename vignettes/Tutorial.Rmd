@@ -15,6 +15,18 @@ knitr::opts_chunk$set(
 ```
 
 ```{r setup}
+# Install scSimu and related packages
+devtools::install_github("xs222/scSimu")
+if (!requireNamespace("glmGamPoi", quietly = TRUE)){
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+  BiocManager::install("glmGamPoi")
+}
+if (!requireNamespace("CSCORE", quietly = TRUE)){
+  devtools::install_github("ChangSuBiostats/CS-CORE") 
+}
+
+# load package
 library(scSimu)
 ```
 
@@ -28,6 +40,7 @@ library(Seurat)
 library(SeuratData)
 library(ggplot2)
 library(patchwork)
+
 pbmc3k.final <- LoadData("pbmc3k", type = "pbmc3k.final")
 pbmc3k.final <- UpdateSeuratObject(pbmc3k.final)
 pbmc3k.final
@@ -42,7 +55,7 @@ pbmc3k.T
 # Estimate marginal parameters
 
 ```{r}
-pbmc3k_count <- as.matrix(pbmc3k.T@assays$RNA@counts)
+pbmc3k_count <- as.matrix(GetAssayData(object = pbmc3k.T, slot = "counts"))
 marginal_para <- marginal_fit(pbmc3k_count)
 ```
 
