@@ -16,7 +16,9 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 # Install scSimu and related packages
-devtools::install_github("xs222/scSimu")
+if (!requireNamespace("scSimu", quietly = TRUE)){
+  devtools::install_github("xs222/scSimu")
+}
 if (!requireNamespace("glmGamPoi", quietly = TRUE)){
   if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")

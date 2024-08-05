@@ -3,7 +3,7 @@
     "path": "~/xs282/validation/package/scSimu/vignettes/Tutorial.Rmd",
     "project_path": "vignettes/Tutorial.Rmd",
     "type": "r_markdown",
-    "hash": "3210047818",
+    "hash": "653572034",
     "contents": "",
     "dirty": false,
     "created": 1721763726345.0,
@@ -12,16 +12,16 @@
     "properties": {
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "27,0",
-        "scrollLine": "9",
+        "cursorPosition": "20,1",
+        "scrollLine": "12",
         "last_setup_crc32": ""
     },
     "folds": "",
-    "lastKnownWriteTime": 1722879188,
+    "lastKnownWriteTime": 1722882976,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1722879188531,
+    "last_content_update": 1722882976844,
     "read_only": false,
     "read_only_alternatives": []
 }
