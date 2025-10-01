@@ -1,6 +1,6 @@
 # scSimu: Single-Cell SIMUlation
 
-scSimu is an R package used to simulate drop-seq scRNA-seq count data from real data.
+scSimu is an R package used to simulate scRNA count data from real data.
 
 ## Quick Start
 * Install `scSimu` using `devtools::install_github("xs222/scSimu")`
