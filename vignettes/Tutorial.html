@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Simulating Drop-seq scRNA count data</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Simulating Drop-seq scRNA count data</h1>
+
+
+
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># Install scSimu and related packages</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(fastmap)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;scSimu&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;xs222/scSimu&quot;</span>)</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>}</span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;glmGamPoi&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;BiocManager&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a>    <span class="fu">install.packages</span>(<span class="st">&quot;BiocManager&quot;</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a>  BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="st">&quot;glmGamPoi&quot;</span>)</span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a>}</span>
+<span id="cb1-12"><a href="#cb1-12" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;CSCORE&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb1-13"><a href="#cb1-13" tabindex="-1"></a>  devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;ChangSuBiostats/CS-CORE&quot;</span>) </span>
+<span id="cb1-14"><a href="#cb1-14" tabindex="-1"></a>}</span>
+<span id="cb1-15"><a href="#cb1-15" tabindex="-1"></a></span>
+<span id="cb1-16"><a href="#cb1-16" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;SeuratData&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb1-17"><a href="#cb1-17" tabindex="-1"></a>  devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&#39;satijalab/seurat-data&#39;</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" tabindex="-1"></a>}</span>
+<span id="cb1-19"><a href="#cb1-19" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" tabindex="-1"></a><span class="co"># load package</span></span>
+<span id="cb1-21"><a href="#cb1-21" tabindex="-1"></a><span class="fu">library</span>(scSimu)</span></code></pre></div>
+<div id="simulating-droplet-based-data" class="section level1">
+<h1>Simulating droplet-based data</h1>
+<div id="load-data" class="section level2">
+<h2>Load data</h2>
+<p>Here we utilize the T cells from 2,700 PBMC from Seurat.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a>SeuratData<span class="sc">::</span><span class="fu">InstallData</span>(<span class="st">&quot;pbmc3k&quot;</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a><span class="co">#&gt; Warning: The following packages are already installed and will not be</span></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a><span class="co">#&gt; reinstalled: pbmc3k</span></span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co">#&gt; Loading required package: SeuratObject</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co">#&gt; Loading required package: sp</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co">#&gt; Attaching package: &#39;SeuratObject&#39;</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a><span class="co">#&gt; The following object is masked from &#39;package:base&#39;:</span></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co">#&gt;     intersect</span></span></code></pre></div>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">library</span>(SeuratData)</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="co">#&gt; ── Installed datasets ──────────────────────────────── SeuratData v0.2.2.9001 ──</span></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a><span class="co">#&gt; ✔ pbmc3k       3.1.4                    ✔ pbmcMultiome 0.1.4</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a><span class="co">#&gt; ────────────────────────────────────── Key ─────────────────────────────────────</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co">#&gt; ✔ Dataset loaded successfully</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co">#&gt; ❯ Dataset built with a newer version of Seurat than installed</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a><span class="co">#&gt; ❓ Unknown version of Seurat installed</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a>pbmc3k.final <span class="ot">&lt;-</span> <span class="fu">LoadData</span>(<span class="st">&quot;pbmc3k&quot;</span>, <span class="at">type =</span> <span class="st">&quot;pbmc3k.final&quot;</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co">#&gt; Validating object structure</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co">#&gt; Updating object slots</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a><span class="co">#&gt; Ensuring keys are in the proper structure</span></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co">#&gt; Updating matrix keys for DimReduc &#39;pca&#39;</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co">#&gt; Updating matrix keys for DimReduc &#39;umap&#39;</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a><span class="co">#&gt; Warning: Assay RNA changing from Assay to Assay</span></span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a><span class="co">#&gt; Warning: Graph RNA_nn changing from Graph to Graph</span></span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co">#&gt; Warning: Graph RNA_snn changing from Graph to Graph</span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a><span class="co">#&gt; Warning: DimReduc pca changing from DimReduc to DimReduc</span></span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a><span class="co">#&gt; Warning: DimReduc umap changing from DimReduc to DimReduc</span></span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="co">#&gt; Ensuring keys are in the proper structure</span></span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt; Ensuring feature names don&#39;t have underscores or pipes</span></span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA</span></span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA_nn</span></span>
+<span id="cb5-19"><a href="#cb5-19" tabindex="-1"></a><span class="co">#&gt; Setting default assay of RNA_nn to RNA</span></span>
+<span id="cb5-20"><a href="#cb5-20" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA_snn</span></span>
+<span id="cb5-21"><a href="#cb5-21" tabindex="-1"></a><span class="co">#&gt; Setting default assay of RNA_snn to RNA</span></span>
+<span id="cb5-22"><a href="#cb5-22" tabindex="-1"></a><span class="co">#&gt; Updating slots in pca</span></span>
+<span id="cb5-23"><a href="#cb5-23" tabindex="-1"></a><span class="co">#&gt; Updating slots in umap</span></span>
+<span id="cb5-24"><a href="#cb5-24" tabindex="-1"></a><span class="co">#&gt; Setting umap DimReduc to global</span></span>
+<span id="cb5-25"><a href="#cb5-25" tabindex="-1"></a><span class="co">#&gt; Setting assay used for NormalizeData.RNA to RNA</span></span>
+<span id="cb5-26"><a href="#cb5-26" tabindex="-1"></a><span class="co">#&gt; Setting assay used for FindVariableFeatures.RNA to RNA</span></span>
+<span id="cb5-27"><a href="#cb5-27" tabindex="-1"></a><span class="co">#&gt; Setting assay used for ScaleData.RNA to RNA</span></span>
+<span id="cb5-28"><a href="#cb5-28" tabindex="-1"></a><span class="co">#&gt; Setting assay used for RunPCA.RNA to RNA</span></span>
+<span id="cb5-29"><a href="#cb5-29" tabindex="-1"></a><span class="co">#&gt; Setting assay used for JackStraw.RNA.pca to RNA</span></span>
+<span id="cb5-30"><a href="#cb5-30" tabindex="-1"></a><span class="co">#&gt; No assay information could be found for ScoreJackStraw</span></span>
+<span id="cb5-31"><a href="#cb5-31" tabindex="-1"></a><span class="co">#&gt; Warning: Adding a command log without an assay associated with it</span></span>
+<span id="cb5-32"><a href="#cb5-32" tabindex="-1"></a><span class="co">#&gt; Setting assay used for FindNeighbors.RNA.pca to RNA</span></span>
+<span id="cb5-33"><a href="#cb5-33" tabindex="-1"></a><span class="co">#&gt; No assay information could be found for FindClusters</span></span>
+<span id="cb5-34"><a href="#cb5-34" tabindex="-1"></a><span class="co">#&gt; Warning: Adding a command log without an assay associated with it</span></span>
+<span id="cb5-35"><a href="#cb5-35" tabindex="-1"></a><span class="co">#&gt; Setting assay used for RunUMAP.RNA.pca to RNA</span></span>
+<span id="cb5-36"><a href="#cb5-36" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Assay &#39;RNA&#39;</span></span>
+<span id="cb5-37"><a href="#cb5-37" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Graph &#39;RNA_nn&#39;</span></span>
+<span id="cb5-38"><a href="#cb5-38" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Graph &#39;RNA_snn&#39;</span></span>
+<span id="cb5-39"><a href="#cb5-39" tabindex="-1"></a><span class="co">#&gt; Validating object structure for DimReduc &#39;pca&#39;</span></span>
+<span id="cb5-40"><a href="#cb5-40" tabindex="-1"></a><span class="co">#&gt; Validating object structure for DimReduc &#39;umap&#39;</span></span>
+<span id="cb5-41"><a href="#cb5-41" tabindex="-1"></a><span class="co">#&gt; Object representation is consistent with the most current Seurat version</span></span>
+<span id="cb5-42"><a href="#cb5-42" tabindex="-1"></a><span class="co">#&gt; Warning: Assay RNA changing from Assay to Assay5</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a>pbmc3k.final <span class="ot">&lt;-</span> <span class="fu">UpdateSeuratObject</span>(pbmc3k.final)</span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co">#&gt; Validating object structure</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a><span class="co">#&gt; Updating object slots</span></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co">#&gt; Ensuring keys are in the proper structure</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a><span class="co">#&gt; Updating matrix keys for DimReduc &#39;pca&#39;</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a><span class="co">#&gt; Updating matrix keys for DimReduc &#39;umap&#39;</span></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co">#&gt; Ensuring keys are in the proper structure</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a><span class="co">#&gt; Ensuring feature names don&#39;t have underscores or pipes</span></span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA</span></span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA_nn</span></span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a><span class="co">#&gt; Setting default assay of RNA_nn to RNA</span></span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a><span class="co">#&gt; Updating slots in RNA_snn</span></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co">#&gt; Setting default assay of RNA_snn to RNA</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a><span class="co">#&gt; Updating slots in pca</span></span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a><span class="co">#&gt; Updating slots in umap</span></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a><span class="co">#&gt; Setting umap DimReduc to global</span></span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a><span class="co">#&gt; Setting assay used for NormalizeData.RNA to RNA</span></span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a><span class="co">#&gt; Setting assay used for FindVariableFeatures.RNA to RNA</span></span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a><span class="co">#&gt; Setting assay used for ScaleData.RNA to RNA</span></span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co">#&gt; Setting assay used for RunPCA.RNA to RNA</span></span>
+<span id="cb6-21"><a href="#cb6-21" tabindex="-1"></a><span class="co">#&gt; Setting assay used for JackStraw.RNA.pca to RNA</span></span>
+<span id="cb6-22"><a href="#cb6-22" tabindex="-1"></a><span class="co">#&gt; No assay information could be found for ScoreJackStraw</span></span>
+<span id="cb6-23"><a href="#cb6-23" tabindex="-1"></a><span class="co">#&gt; Warning: Adding a command log without an assay associated with it</span></span>
+<span id="cb6-24"><a href="#cb6-24" tabindex="-1"></a><span class="co">#&gt; Setting assay used for FindNeighbors.RNA.pca to RNA</span></span>
+<span id="cb6-25"><a href="#cb6-25" tabindex="-1"></a><span class="co">#&gt; No assay information could be found for FindClusters</span></span>
+<span id="cb6-26"><a href="#cb6-26" tabindex="-1"></a><span class="co">#&gt; Warning: Adding a command log without an assay associated with it</span></span>
+<span id="cb6-27"><a href="#cb6-27" tabindex="-1"></a><span class="co">#&gt; Setting assay used for RunUMAP.RNA.pca to RNA</span></span>
+<span id="cb6-28"><a href="#cb6-28" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Assay5 &#39;RNA&#39;</span></span>
+<span id="cb6-29"><a href="#cb6-29" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Graph &#39;RNA_nn&#39;</span></span>
+<span id="cb6-30"><a href="#cb6-30" tabindex="-1"></a><span class="co">#&gt; Validating object structure for Graph &#39;RNA_snn&#39;</span></span>
+<span id="cb6-31"><a href="#cb6-31" tabindex="-1"></a><span class="co">#&gt; Validating object structure for DimReduc &#39;pca&#39;</span></span>
+<span id="cb6-32"><a href="#cb6-32" tabindex="-1"></a><span class="co">#&gt; Validating object structure for DimReduc &#39;umap&#39;</span></span>
+<span id="cb6-33"><a href="#cb6-33" tabindex="-1"></a><span class="co">#&gt; Object representation is consistent with the most current Seurat version</span></span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>pbmc3k.final</span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a><span class="co">#&gt; An object of class Seurat </span></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="co">#&gt; 13714 features across 2638 samples within 1 assay </span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="co">#&gt; Active assay: RNA (13714 features, 2000 variable features)</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="co">#&gt;  3 layers present: data, counts, scale.data</span></span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a><span class="co">#&gt;  2 dimensional reductions calculated: pca, umap</span></span></code></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="fu">table</span>(pbmc3k.final<span class="sc">$</span>seurat_annotations)</span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="co">#&gt;  Naive CD4 T Memory CD4 T   CD14+ Mono            B        CD8 T FCGR3A+ Mono </span></span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a><span class="co">#&gt;          697          483          480          344          271          162 </span></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a><span class="co">#&gt;           NK           DC     Platelet </span></span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a><span class="co">#&gt;          155           32           14</span></span></code></pre></div>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>pbmc3k.T <span class="ot">&lt;-</span> <span class="fu">subset</span>(pbmc3k.final, <span class="at">subset =</span> seurat_annotations <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;Naive CD4 T&quot;</span>, <span class="st">&quot;Memory CD4 T&quot;</span>, <span class="st">&quot;CD8 T&quot;</span>))</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>pbmc3k.T</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="co">#&gt; An object of class Seurat </span></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a><span class="co">#&gt; 13714 features across 1451 samples within 1 assay </span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a><span class="co">#&gt; Active assay: RNA (13714 features, 2000 variable features)</span></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="co">#&gt;  3 layers present: data, counts, scale.data</span></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a><span class="co">#&gt;  2 dimensional reductions calculated: pca, umap</span></span></code></pre></div>
+</div>
+<div id="estimate-marginal-parameters" class="section level2">
+<h2>Estimate marginal parameters</h2>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a>pbmc3k_count <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(<span class="fu">GetAssayData</span>(<span class="at">object =</span> pbmc3k.T, <span class="at">slot =</span> <span class="st">&quot;counts&quot;</span>))</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt; Warning: The `slot` argument of `GetAssayData()` is deprecated as of SeuratObject 5.0.0.</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co">#&gt; ℹ Please use the `layer` argument instead.</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co">#&gt; This warning is displayed once every 8 hours.</span></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt; Call `lifecycle::last_lifecycle_warnings()` to see where this warning was</span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt; generated.</span></span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>marginal_para <span class="ot">&lt;-</span> <span class="fu">marginal_fit</span>(pbmc3k_count)</span>
+<span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="co">#&gt; Attaching package: &#39;glmGamPoi&#39;</span></span>
+<span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="co">#&gt; The following object is masked from &#39;package:ggplot2&#39;:</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="co">#&gt;     vars</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co">#&gt; Make initial dispersion estimate</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="co">#&gt; Make initial beta estimate</span></span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co">#&gt; Estimate beta</span></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="co">#&gt; Estimate dispersion</span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="co">#&gt; Fit dispersion trend</span></span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="co">#&gt; Shrink dispersion estimates</span></span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="co">#&gt; Estimate beta again</span></span></code></pre></div>
+<p>Check the relationship between mu and alpha.</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" tabindex="-1"></a><span class="fu">ggplot</span>(marginal_para, <span class="fu">aes</span>(<span class="at">x=</span>mu, <span class="at">y=</span>alpha))<span class="sc">+</span></span>
+<span id="cb12-2"><a href="#cb12-2" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">&quot;log10(alpha) v.s. log10(mu)&quot;</span>)<span class="sc">+</span></span>
+<span id="cb12-3"><a href="#cb12-3" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">&quot;log10(mu)&quot;</span>)<span class="sc">+</span><span class="fu">ylab</span>(<span class="st">&quot;log10(alpha)&quot;</span>)</span></code></pre></div>
+<p><img src="data:image/png;base64,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" /><!-- --></p>
+<p>Fit a smooth curve between mu and alpha using the major cluster</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" tabindex="-1"></a>marginal_para<span class="sc">$</span>up <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(marginal_para<span class="sc">$</span>alpha<span class="sc">&gt;</span><span class="fl">3.5</span>, <span class="st">&quot;upper&quot;</span>,<span class="st">&quot;lower&quot;</span>)</span>
+<span id="cb13-2"><a href="#cb13-2" tabindex="-1"></a><span class="fu">ggplot</span>(marginal_para, <span class="fu">aes</span>(<span class="at">x=</span>mu, <span class="at">y=</span>alpha, <span class="at">color=</span>up))<span class="sc">+</span></span>
+<span id="cb13-3"><a href="#cb13-3" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span><span class="fu">labs</span>(<span class="at">title =</span> <span class="st">&quot;log10(alpha) v.s. log10(mu)&quot;</span>)<span class="sc">+</span></span>
+<span id="cb13-4"><a href="#cb13-4" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">&quot;log10(mu)&quot;</span>)<span class="sc">+</span><span class="fu">ylab</span>(<span class="st">&quot;log10(alpha)&quot;</span>)</span></code></pre></div>
+<p><img src="data:image/png;base64,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" /><!-- --></p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" tabindex="-1"></a></span>
+<span id="cb14-2"><a href="#cb14-2" tabindex="-1"></a><span class="do">## fit line (only use the major cluster)</span></span>
+<span id="cb14-3"><a href="#cb14-3" tabindex="-1"></a>marginal_para_sel <span class="ot">&lt;-</span> marginal_para[marginal_para<span class="sc">$</span>up<span class="sc">==</span><span class="st">&quot;lower&quot;</span>,]</span>
+<span id="cb14-4"><a href="#cb14-4" tabindex="-1"></a><span class="do">## kernel smooth</span></span>
+<span id="cb14-5"><a href="#cb14-5" tabindex="-1"></a>km5 <span class="ot">&lt;-</span> <span class="fu">ksmooth</span>(marginal_para_sel<span class="sc">$</span>mu, marginal_para_sel<span class="sc">$</span>alpha,</span>
+<span id="cb14-6"><a href="#cb14-6" tabindex="-1"></a>               <span class="at">kernel=</span><span class="st">&quot;normal&quot;</span>, <span class="at">bandwidth =</span> <span class="fu">bw.SJ</span>(marginal_para_sel<span class="sc">$</span>mu)<span class="sc">*</span><span class="dv">5</span>)</span>
+<span id="cb14-7"><a href="#cb14-7" tabindex="-1"></a></span>
+<span id="cb14-8"><a href="#cb14-8" tabindex="-1"></a>ksmooth_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">mu =</span> km5<span class="sc">$</span>x, <span class="at">alpha =</span> km5<span class="sc">$</span>y)</span>
+<span id="cb14-9"><a href="#cb14-9" tabindex="-1"></a><span class="co"># Plot the data and the fitted line</span></span>
+<span id="cb14-10"><a href="#cb14-10" tabindex="-1"></a><span class="fu">ggplot</span>() <span class="sc">+</span></span>
+<span id="cb14-11"><a href="#cb14-11" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">data =</span> marginal_para, <span class="fu">aes</span>(<span class="at">x =</span> mu, <span class="at">y =</span> alpha), <span class="at">alpha =</span> <span class="fl">0.6</span>) <span class="sc">+</span></span>
+<span id="cb14-12"><a href="#cb14-12" tabindex="-1"></a>  <span class="fu">geom_line</span>(<span class="at">data =</span> ksmooth_df, <span class="fu">aes</span>(<span class="at">x =</span> mu, <span class="at">y =</span> alpha), <span class="at">color =</span> <span class="st">&quot;red&quot;</span>, <span class="at">size =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb14-13"><a href="#cb14-13" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">&quot;Scatter Plot with Fitted Line&quot;</span>,</span>
+<span id="cb14-14"><a href="#cb14-14" tabindex="-1"></a>       <span class="at">x =</span> <span class="st">&quot;log10(mu)&quot;</span>,</span>
+<span id="cb14-15"><a href="#cb14-15" tabindex="-1"></a>       <span class="at">y =</span> <span class="st">&quot;log10(alpha)&quot;</span>) </span>
+<span id="cb14-16"><a href="#cb14-16" tabindex="-1"></a><span class="co">#&gt; Warning: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.</span></span>
+<span id="cb14-17"><a href="#cb14-17" tabindex="-1"></a><span class="co">#&gt; ℹ Please use `linewidth` instead.</span></span>
+<span id="cb14-18"><a href="#cb14-18" tabindex="-1"></a><span class="co">#&gt; This warning is displayed once every 8 hours.</span></span>
+<span id="cb14-19"><a href="#cb14-19" tabindex="-1"></a><span class="co">#&gt; Call `lifecycle::last_lifecycle_warnings()` to see where this warning was</span></span>
+<span id="cb14-20"><a href="#cb14-20" tabindex="-1"></a><span class="co">#&gt; generated.</span></span></code></pre></div>
+<p><img src="data:image/png;base64,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" /><!-- --></p>
+<p>Use the fitted curve to find alpha.</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" tabindex="-1"></a>log10mu <span class="ot">&lt;-</span> marginal_para<span class="sc">$</span>mu</span>
+<span id="cb15-2"><a href="#cb15-2" tabindex="-1"></a>gene_name <span class="ot">&lt;-</span> marginal_para<span class="sc">$</span>gene</span>
+<span id="cb15-3"><a href="#cb15-3" tabindex="-1"></a><span class="fu">names</span>(log10mu) <span class="ot">&lt;-</span> gene_name</span>
+<span id="cb15-4"><a href="#cb15-4" tabindex="-1"></a>mu <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span>log10mu</span>
+<span id="cb15-5"><a href="#cb15-5" tabindex="-1"></a></span>
+<span id="cb15-6"><a href="#cb15-6" tabindex="-1"></a>fitted_trend <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">mu=</span>km5<span class="sc">$</span>x, <span class="at">alpha=</span>km5<span class="sc">$</span>y)</span>
+<span id="cb15-7"><a href="#cb15-7" tabindex="-1"></a>log10alpha <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(marginal_para))</span>
+<span id="cb15-8"><a href="#cb15-8" tabindex="-1"></a><span class="fu">names</span>(log10alpha) <span class="ot">&lt;-</span> marginal_para<span class="sc">$</span>gene</span>
+<span id="cb15-9"><a href="#cb15-9" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(marginal_para)){</span>
+<span id="cb15-10"><a href="#cb15-10" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="fu">which.min</span>(<span class="fu">abs</span>(log10mu[i]<span class="sc">-</span>fitted_trend<span class="sc">$</span>mu))</span>
+<span id="cb15-11"><a href="#cb15-11" tabindex="-1"></a>  log10alpha[i] <span class="ot">&lt;-</span> fitted_trend<span class="sc">$</span>alpha[idx]</span>
+<span id="cb15-12"><a href="#cb15-12" tabindex="-1"></a>}</span>
+<span id="cb15-13"><a href="#cb15-13" tabindex="-1"></a>alpha <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span>log10alpha</span></code></pre></div>
+</div>
+<div id="simulate-independent-data" class="section level2">
+<h2>Simulate independent data</h2>
+<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" tabindex="-1"></a>simu_ind <span class="ot">&lt;-</span> <span class="fu">scSimu</span>(mu, alpha, pbmc3k_count)</span></code></pre></div>
+</div>
+<div id="simulate-correlated-data" class="section level2">
+<h2>Simulate correlated data</h2>
+<p>Consider the correlation structure for highly expressed genes.</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" tabindex="-1"></a>marginal_para <span class="ot">&lt;-</span> marginal_para[<span class="fu">order</span>(marginal_para<span class="sc">$</span>mu, <span class="at">decreasing =</span> T),]</span>
+<span id="cb17-2"><a href="#cb17-2" tabindex="-1"></a>cor_gene <span class="ot">&lt;-</span> marginal_para<span class="sc">$</span>gene[<span class="dv">1</span><span class="sc">:</span><span class="dv">500</span>]</span>
+<span id="cb17-3"><a href="#cb17-3" tabindex="-1"></a>simu_cor <span class="ot">&lt;-</span> <span class="fu">scSimu</span>(mu, alpha, pbmc3k_count, <span class="at">IND =</span> F, <span class="at">cor_gene =</span> cor_gene)</span>
+<span id="cb17-4"><a href="#cb17-4" tabindex="-1"></a><span class="co">#&gt; Warning: Data is of class matrix. Coercing to dgCMatrix.</span></span>
+<span id="cb17-5"><a href="#cb17-5" tabindex="-1"></a><span class="co">#&gt; [1] &quot;IRLS converged after 4 iterations.&quot;</span></span>
+<span id="cb17-6"><a href="#cb17-6" tabindex="-1"></a><span class="co">#&gt; [1] &quot;5 among 500 genes have negative variance estimates. Their co-expressions with other genes were set to 0.&quot;</span></span>
+<span id="cb17-7"><a href="#cb17-7" tabindex="-1"></a><span class="co">#&gt; [1] &quot;0.2846% co-expression estimates were greater than 1 and were set to 1.&quot;</span></span>
+<span id="cb17-8"><a href="#cb17-8" tabindex="-1"></a><span class="co">#&gt; [1] &quot;0.2389% co-expression estimates were smaller than -1 and were set to -1.&quot;</span></span>
+<span id="cb17-9"><a href="#cb17-9" tabindex="-1"></a><span class="co">#&gt; &lt;simpleError in chol.default(cor_mat): the leading minor of order 45 is not positive&gt;</span></span>
+<span id="cb17-10"><a href="#cb17-10" tabindex="-1"></a><span class="co">#&gt; [1] &quot;The correlation matrix is not positive semi-definite. Use eigen decomposition.&quot;</span></span>
+<span id="cb17-11"><a href="#cb17-11" tabindex="-1"></a><span class="co">#&gt; Warning in mvtnorm::rmvnorm(ncell, mean = rep(0, dim(cor_mat)[1]), sigma =</span></span>
+<span id="cb17-12"><a href="#cb17-12" tabindex="-1"></a><span class="co">#&gt; cor_mat, : sigma is numerically not positive semidefinite</span></span></code></pre></div>
+</div>
+</div>
+<div id="simulating-smart-seq-data" class="section level1">
+<h1>Simulating Smart-Seq data</h1>
+<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" tabindex="-1"></a><span class="co"># Install related packages</span></span>
+<span id="cb18-2"><a href="#cb18-2" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;biomaRt&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb18-3"><a href="#cb18-3" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;BiocManager&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb18-4"><a href="#cb18-4" tabindex="-1"></a>    <span class="fu">install.packages</span>(<span class="st">&quot;BiocManager&quot;</span>)</span>
+<span id="cb18-5"><a href="#cb18-5" tabindex="-1"></a>  BiocManager<span class="sc">::</span><span class="fu">install</span>(<span class="st">&quot;biomaRt&quot;</span>)</span>
+<span id="cb18-6"><a href="#cb18-6" tabindex="-1"></a>}</span>
+<span id="cb18-7"><a href="#cb18-7" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;Matrix&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb18-8"><a href="#cb18-8" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&quot;Matrix&quot;</span>)</span>
+<span id="cb18-9"><a href="#cb18-9" tabindex="-1"></a>}</span>
+<span id="cb18-10"><a href="#cb18-10" tabindex="-1"></a></span>
+<span id="cb18-11"><a href="#cb18-11" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;MASS&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb18-12"><a href="#cb18-12" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&quot;MASS&quot;</span>)</span>
+<span id="cb18-13"><a href="#cb18-13" tabindex="-1"></a>}</span>
+<span id="cb18-14"><a href="#cb18-14" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;pscl&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)){</span>
+<span id="cb18-15"><a href="#cb18-15" tabindex="-1"></a>  <span class="fu">install.packages</span>(<span class="st">&quot;pscl&quot;</span>)</span>
+<span id="cb18-16"><a href="#cb18-16" tabindex="-1"></a>}</span></code></pre></div>
+<div id="load-data-1" class="section level2">
+<h2>Load data</h2>
+<p>We use Smart-Seq data from <a href="https://www.nature.com/articles/s41587-020-0465-8" class="uri">https://www.nature.com/articles/s41587-020-0465-8</a>.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" tabindex="-1"></a><span class="fu">library</span>(Matrix)</span>
+<span id="cb19-2"><a href="#cb19-2" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb19-3"><a href="#cb19-3" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb19-4"><a href="#cb19-4" tabindex="-1"></a><span class="co">#&gt; Attaching package: &#39;dplyr&#39;</span></span>
+<span id="cb19-5"><a href="#cb19-5" tabindex="-1"></a><span class="co">#&gt; The following object is masked from &#39;package:glmGamPoi&#39;:</span></span>
+<span id="cb19-6"><a href="#cb19-6" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb19-7"><a href="#cb19-7" tabindex="-1"></a><span class="co">#&gt;     vars</span></span>
+<span id="cb19-8"><a href="#cb19-8" tabindex="-1"></a><span class="co">#&gt; The following objects are masked from &#39;package:stats&#39;:</span></span>
+<span id="cb19-9"><a href="#cb19-9" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb19-10"><a href="#cb19-10" tabindex="-1"></a><span class="co">#&gt;     filter, lag</span></span>
+<span id="cb19-11"><a href="#cb19-11" tabindex="-1"></a><span class="co">#&gt; The following objects are masked from &#39;package:base&#39;:</span></span>
+<span id="cb19-12"><a href="#cb19-12" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb19-13"><a href="#cb19-13" tabindex="-1"></a><span class="co">#&gt;     intersect, setdiff, setequal, union</span></span></code></pre></div>
+<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" tabindex="-1"></a><span class="fu">library</span>(biomaRt)</span>
+<span id="cb20-2"><a href="#cb20-2" tabindex="-1"></a><span class="fu">library</span>(glmGamPoi)</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" tabindex="-1"></a>count_data <span class="ot">=</span> <span class="fu">readMM</span>(<span class="fu">paste0</span>(<span class="st">&quot;C:/Users/15177/Downloads/counts.read.txt&quot;</span>))</span>
+<span id="cb21-2"><a href="#cb21-2" tabindex="-1"></a>cells <span class="ot">=</span> <span class="fu">read.table</span>(<span class="fu">paste0</span>(<span class="st">&quot;C:/Users/15177/Downloads/cells.read.new.txt&quot;</span>))</span>
+<span id="cb21-3"><a href="#cb21-3" tabindex="-1"></a>genes <span class="ot">=</span> <span class="fu">read.table</span>(<span class="fu">paste0</span>(<span class="st">&quot;C:/Users/15177/Downloads/genes.read.txt&quot;</span>))</span>
+<span id="cb21-4"><a href="#cb21-4" tabindex="-1"></a>meta <span class="ot">=</span> <span class="fu">read.table</span>(<span class="fu">paste0</span>(<span class="st">&quot;C:/Users/15177/Downloads/meta.txt&quot;</span>), <span class="at">sep =</span> <span class="st">&quot;</span><span class="sc">\t</span><span class="st">&quot;</span>, <span class="at">header=</span>T)</span>
+<span id="cb21-5"><a href="#cb21-5" tabindex="-1"></a><span class="fu">colnames</span>(count_data) <span class="ot">=</span> cells<span class="sc">$</span>V1</span>
+<span id="cb21-6"><a href="#cb21-6" tabindex="-1"></a><span class="fu">rownames</span>(count_data) <span class="ot">=</span> genes<span class="sc">$</span>V1</span>
+<span id="cb21-7"><a href="#cb21-7" tabindex="-1"></a>meta_sub <span class="ot">=</span> meta[meta<span class="sc">$</span>Method<span class="sc">==</span><span class="st">&quot;Smart-seq2&quot;</span> <span class="sc">&amp;</span> meta<span class="sc">$</span>Experiment<span class="sc">==</span><span class="st">&quot;pbmc1&quot;</span>,]</span>
+<span id="cb21-8"><a href="#cb21-8" tabindex="-1"></a></span>
+<span id="cb21-9"><a href="#cb21-9" tabindex="-1"></a>ct <span class="ot">=</span> <span class="st">&quot;Cytotoxic T cell&quot;</span></span>
+<span id="cb21-10"><a href="#cb21-10" tabindex="-1"></a>cell_name <span class="ot">=</span> meta_sub<span class="sc">$</span>NAME[meta_sub<span class="sc">$</span>CellType<span class="sc">==</span>ct]</span>
+<span id="cb21-11"><a href="#cb21-11" tabindex="-1"></a>count_sub <span class="ot">=</span> count_data[,cell_name]</span>
+<span id="cb21-12"><a href="#cb21-12" tabindex="-1"></a>count_sub <span class="ot">=</span> <span class="fu">as.matrix</span>(count_sub)</span>
+<span id="cb21-13"><a href="#cb21-13" tabindex="-1"></a></span>
+<span id="cb21-14"><a href="#cb21-14" tabindex="-1"></a><span class="co"># filter genes</span></span>
+<span id="cb21-15"><a href="#cb21-15" tabindex="-1"></a>gene_idx <span class="ot">=</span> <span class="fu">which</span>((<span class="fu">rowSums</span>(count_sub)<span class="sc">&gt;=</span><span class="dv">10</span>) <span class="sc">&amp;</span> (<span class="fu">rowSums</span>(count_sub<span class="sc">&gt;=</span><span class="dv">1</span>)<span class="sc">&gt;=</span><span class="dv">10</span>))</span>
+<span id="cb21-16"><a href="#cb21-16" tabindex="-1"></a><span class="fu">nrow</span>(count_sub)<span class="sc">-</span><span class="fu">length</span>(gene_idx)</span>
+<span id="cb21-17"><a href="#cb21-17" tabindex="-1"></a><span class="co">#&gt; [1] 25569</span></span></code></pre></div>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a>ct_counts <span class="ot">=</span> count_sub[gene_idx,]</span>
+<span id="cb22-2"><a href="#cb22-2" tabindex="-1"></a><span class="fu">dim</span>(ct_counts)</span>
+<span id="cb22-3"><a href="#cb22-3" tabindex="-1"></a><span class="co">#&gt; [1] 8125  117</span></span></code></pre></div>
+</div>
+<div id="identify-genes-with-zero-inflation" class="section level2">
+<h2>Identify genes with zero inflation</h2>
+<p>This is based on the procedures in scDesign2.</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" tabindex="-1"></a>check_marginal_fit <span class="ot">=</span> <span class="cf">function</span>(gene){</span>
+<span id="cb23-2"><a href="#cb23-2" tabindex="-1"></a>    <span class="fu">library</span>(pscl)</span>
+<span id="cb23-3"><a href="#cb23-3" tabindex="-1"></a>    <span class="fu">library</span>(MASS)</span>
+<span id="cb23-4"><a href="#cb23-4" tabindex="-1"></a>    m <span class="ot">&lt;-</span> <span class="fu">mean</span>(gene)</span>
+<span id="cb23-5"><a href="#cb23-5" tabindex="-1"></a>    v <span class="ot">&lt;-</span> <span class="fu">var</span>(gene)</span>
+<span id="cb23-6"><a href="#cb23-6" tabindex="-1"></a>    <span class="cf">if</span>(m <span class="sc">&gt;=</span> v){</span>
+<span id="cb23-7"><a href="#cb23-7" tabindex="-1"></a>        mle_Poisson <span class="ot">&lt;-</span> <span class="fu">glm</span>(gene <span class="sc">~</span> <span class="dv">1</span>, <span class="at">family =</span> poisson)</span>
+<span id="cb23-8"><a href="#cb23-8" tabindex="-1"></a>        res <span class="ot">=</span> <span class="fu">tryCatch</span>({</span>
+<span id="cb23-9"><a href="#cb23-9" tabindex="-1"></a>          mle_ZIP <span class="ot">&lt;-</span> <span class="fu">zeroinfl</span>(gene <span class="sc">~</span> <span class="dv">1</span><span class="sc">|</span><span class="dv">1</span>, <span class="at">dist =</span> <span class="st">&#39;poisson&#39;</span>)</span>
+<span id="cb23-10"><a href="#cb23-10" tabindex="-1"></a>          chisq_val <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="fu">logLik</span>(mle_ZIP) <span class="sc">-</span> <span class="fu">logLik</span>(mle_Poisson))</span>
+<span id="cb23-11"><a href="#cb23-11" tabindex="-1"></a>          pvalue <span class="ot">=</span> <span class="fu">as.numeric</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pchisq</span>(chisq_val, <span class="dv">1</span>))</span>
+<span id="cb23-12"><a href="#cb23-12" tabindex="-1"></a>          <span class="fu">c</span>(pvalue,<span class="dv">0</span>, <span class="fu">ifelse</span>(pvalue<span class="sc">&lt;</span><span class="fl">0.05</span>, <span class="st">&quot;ZIP&quot;</span>, <span class="st">&quot;Poisson&quot;</span>))</span>
+<span id="cb23-13"><a href="#cb23-13" tabindex="-1"></a>        }, <span class="at">error =</span> <span class="cf">function</span>(cond){<span class="fu">c</span>(<span class="dv">1</span>,<span class="dv">0</span>, <span class="st">&quot;Poisson&quot;</span>)})</span>
+<span id="cb23-14"><a href="#cb23-14" tabindex="-1"></a>    }<span class="cf">else</span>{</span>
+<span id="cb23-15"><a href="#cb23-15" tabindex="-1"></a>        res <span class="ot">=</span> <span class="fu">tryCatch</span>({</span>
+<span id="cb23-16"><a href="#cb23-16" tabindex="-1"></a>                mle_NB <span class="ot">&lt;-</span> <span class="fu">glm.nb</span>(gene <span class="sc">~</span> <span class="dv">1</span>)</span>
+<span id="cb23-17"><a href="#cb23-17" tabindex="-1"></a>                <span class="fu">tryCatch</span>({</span>
+<span id="cb23-18"><a href="#cb23-18" tabindex="-1"></a>                    mle_ZINB <span class="ot">&lt;-</span> <span class="fu">zeroinfl</span>(gene <span class="sc">~</span> <span class="dv">1</span><span class="sc">|</span><span class="dv">1</span>, <span class="at">dist =</span> <span class="st">&#39;negbin&#39;</span>)</span>
+<span id="cb23-19"><a href="#cb23-19" tabindex="-1"></a>                    chisq_val <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="fu">logLik</span>(mle_ZINB) <span class="sc">-</span> <span class="fu">logLik</span>(mle_NB))</span>
+<span id="cb23-20"><a href="#cb23-20" tabindex="-1"></a>                    pvalue <span class="ot">=</span> <span class="fu">as.numeric</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pchisq</span>(chisq_val, <span class="dv">1</span>))</span>
+<span id="cb23-21"><a href="#cb23-21" tabindex="-1"></a>                    <span class="fu">c</span>(<span class="dv">0</span>, pvalue, <span class="fu">ifelse</span>(pvalue<span class="sc">&lt;</span><span class="fl">0.05</span>, <span class="st">&quot;ZINB&quot;</span>, <span class="st">&quot;NB&quot;</span>))</span>
+<span id="cb23-22"><a href="#cb23-22" tabindex="-1"></a>                }, <span class="at">error =</span> <span class="cf">function</span>(cond){<span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="st">&quot;NB&quot;</span>)})</span>
+<span id="cb23-23"><a href="#cb23-23" tabindex="-1"></a>             }, <span class="at">warning =</span> <span class="cf">function</span>(w) {</span>
+<span id="cb23-24"><a href="#cb23-24" tabindex="-1"></a>                 <span class="fu">tryCatch</span>({</span>
+<span id="cb23-25"><a href="#cb23-25" tabindex="-1"></a>                    mle_ZINB <span class="ot">&lt;-</span> <span class="fu">zeroinfl</span>(gene <span class="sc">~</span> <span class="dv">1</span><span class="sc">|</span><span class="dv">1</span>, <span class="at">dist =</span> <span class="st">&#39;negbin&#39;</span>)</span>
+<span id="cb23-26"><a href="#cb23-26" tabindex="-1"></a>                    chisq_val <span class="ot">&lt;-</span> <span class="dv">2</span> <span class="sc">*</span> (<span class="fu">logLik</span>(mle_ZINB) <span class="sc">-</span> <span class="fu">logLik</span>(mle_NB))</span>
+<span id="cb23-27"><a href="#cb23-27" tabindex="-1"></a>                    pvalue <span class="ot">=</span> <span class="fu">as.numeric</span>(<span class="dv">1</span> <span class="sc">-</span> <span class="fu">pchisq</span>(chisq_val, <span class="dv">1</span>))</span>
+<span id="cb23-28"><a href="#cb23-28" tabindex="-1"></a>                    <span class="fu">c</span>(<span class="dv">0</span>, pvalue, <span class="fu">ifelse</span>(pvalue<span class="sc">&lt;</span><span class="fl">0.05</span>, <span class="st">&quot;ZINB&quot;</span>, <span class="st">&quot;NB&quot;</span>))</span>
+<span id="cb23-29"><a href="#cb23-29" tabindex="-1"></a>                }, <span class="at">error =</span> <span class="cf">function</span>(cond){<span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="st">&quot;NB&quot;</span>)})</span>
+<span id="cb23-30"><a href="#cb23-30" tabindex="-1"></a>             })</span>
+<span id="cb23-31"><a href="#cb23-31" tabindex="-1"></a>    }</span>
+<span id="cb23-32"><a href="#cb23-32" tabindex="-1"></a>    <span class="fu">return</span>(res)</span>
+<span id="cb23-33"><a href="#cb23-33" tabindex="-1"></a>}</span>
+<span id="cb23-34"><a href="#cb23-34" tabindex="-1"></a></span>
+<span id="cb23-35"><a href="#cb23-35" tabindex="-1"></a>p_gene <span class="ot">=</span> <span class="fu">list</span>()</span>
+<span id="cb23-36"><a href="#cb23-36" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">rownames</span>(ct_counts)){</span>
+<span id="cb23-37"><a href="#cb23-37" tabindex="-1"></a>    gene <span class="ot">=</span> ct_counts[i,]</span>
+<span id="cb23-38"><a href="#cb23-38" tabindex="-1"></a>    p_gene[[i]] <span class="ot">=</span> <span class="fu">check_marginal_fit</span>(gene)</span>
+<span id="cb23-39"><a href="#cb23-39" tabindex="-1"></a>}</span>
+<span id="cb23-40"><a href="#cb23-40" tabindex="-1"></a>p <span class="ot">=</span> <span class="fu">do.call</span>(rbind, p_gene)</span>
+<span id="cb23-41"><a href="#cb23-41" tabindex="-1"></a><span class="fu">colnames</span>(p) <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;Poisson&quot;</span>, <span class="st">&quot;NB&quot;</span>,<span class="st">&quot;group&quot;</span>)</span>
+<span id="cb23-42"><a href="#cb23-42" tabindex="-1"></a>p <span class="ot">=</span> <span class="fu">as.data.frame</span>(p)</span>
+<span id="cb23-43"><a href="#cb23-43" tabindex="-1"></a>p<span class="sc">$</span>gene <span class="ot">=</span> <span class="fu">rownames</span>(p)</span>
+<span id="cb23-44"><a href="#cb23-44" tabindex="-1"></a></span>
+<span id="cb23-45"><a href="#cb23-45" tabindex="-1"></a>ZINB_genes <span class="ot">=</span> p<span class="sc">$</span>gene[p<span class="sc">$</span>group <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;ZINB&quot;</span>, <span class="st">&quot;ZIP&quot;</span>)]</span>
+<span id="cb23-46"><a href="#cb23-46" tabindex="-1"></a>other_genes <span class="ot">=</span> <span class="fu">setdiff</span>(p<span class="sc">$</span>gene, ZINB_genes)</span></code></pre></div>
+</div>
+<div id="estimate-marginal-parameters-1" class="section level2">
+<h2>Estimate marginal parameters</h2>
+<p>we use a Gamma-Poisson GLM for non-zero-inflated genes and a
+zero-inflated model for zero-inflated genes.</p>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="do">## estimate non-zero inflated genes</span></span>
+<span id="cb24-2"><a href="#cb24-2" tabindex="-1"></a>gp_ex <span class="ot">&lt;-</span> <span class="fu">glm_gp</span>(ct_counts[other_genes,], <span class="at">size_factors =</span> <span class="fu">colSums</span>(ct_counts), <span class="at">verbose =</span> T, <span class="at">overdispersion_shrinkage =</span> T, <span class="at">do_cox_reid_adjustment =</span> T)</span>
+<span id="cb24-3"><a href="#cb24-3" tabindex="-1"></a><span class="co">#&gt; Make initial dispersion estimate</span></span>
+<span id="cb24-4"><a href="#cb24-4" tabindex="-1"></a><span class="co">#&gt; Make initial beta estimate</span></span>
+<span id="cb24-5"><a href="#cb24-5" tabindex="-1"></a><span class="co">#&gt; Estimate beta</span></span>
+<span id="cb24-6"><a href="#cb24-6" tabindex="-1"></a><span class="co">#&gt; Estimate dispersion</span></span>
+<span id="cb24-7"><a href="#cb24-7" tabindex="-1"></a><span class="co">#&gt; Fit dispersion trend</span></span>
+<span id="cb24-8"><a href="#cb24-8" tabindex="-1"></a><span class="co">#&gt; Shrink dispersion estimates</span></span>
+<span id="cb24-9"><a href="#cb24-9" tabindex="-1"></a><span class="co">#&gt; Estimate beta again</span></span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" tabindex="-1"></a>vanilla <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">mu =</span> <span class="fu">exp</span>(gp_ex<span class="sc">$</span>Beta[,<span class="dv">1</span>]), <span class="at">alpha =</span> <span class="dv">1</span><span class="sc">/</span>gp_ex<span class="sc">$</span>overdispersions, <span class="at">gene=</span>other_genes)</span>
+<span id="cb25-2"><a href="#cb25-2" tabindex="-1"></a></span>
+<span id="cb25-3"><a href="#cb25-3" tabindex="-1"></a><span class="do">## estimate zero inflated genes</span></span>
+<span id="cb25-4"><a href="#cb25-4" tabindex="-1"></a>zinb_res <span class="ot">=</span> <span class="fu">as.data.frame</span>(<span class="fu">matrix</span>(<span class="at">nrow=</span><span class="fu">length</span>(ZINB_genes), <span class="at">ncol=</span><span class="dv">4</span>))</span>
+<span id="cb25-5"><a href="#cb25-5" tabindex="-1"></a><span class="fu">colnames</span>(zinb_res) <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;gene&quot;</span>, <span class="st">&quot;zero_prop&quot;</span>, <span class="st">&quot;alpha&quot;</span>, <span class="st">&quot;mu&quot;</span>)</span>
+<span id="cb25-6"><a href="#cb25-6" tabindex="-1"></a><span class="fu">rownames</span>(zinb_res) <span class="ot">=</span> ZINB_genes</span>
+<span id="cb25-7"><a href="#cb25-7" tabindex="-1"></a><span class="cf">for</span> (g <span class="cf">in</span> ZINB_genes){</span>
+<span id="cb25-8"><a href="#cb25-8" tabindex="-1"></a>    df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">counts =</span> ct_counts[g,], <span class="at">library_size =</span> <span class="fu">log</span>(<span class="fu">colSums</span>(ct_counts)))</span>
+<span id="cb25-9"><a href="#cb25-9" tabindex="-1"></a>    fit_ZINB <span class="ot">&lt;-</span> <span class="fu">zeroinfl</span>(counts <span class="sc">~</span> <span class="dv">1</span><span class="sc">+</span><span class="fu">offset</span>(library_size)<span class="sc">|</span><span class="dv">1</span>, <span class="at">dist =</span> <span class="st">&#39;negbin&#39;</span>, <span class="at">data=</span>df)</span>
+<span id="cb25-10"><a href="#cb25-10" tabindex="-1"></a>    zinb_res[g,] <span class="ot">=</span> <span class="fu">c</span>(g, <span class="fu">plogis</span>(fit_ZINB<span class="sc">$</span>coefficients<span class="sc">$</span>zero), fit_ZINB<span class="sc">$</span>theta, <span class="fu">exp</span>(fit_ZINB<span class="sc">$</span>coefficients<span class="sc">$</span>count))</span>
+<span id="cb25-11"><a href="#cb25-11" tabindex="-1"></a>}</span>
+<span id="cb25-12"><a href="#cb25-12" tabindex="-1"></a>zinb_res[,<span class="dv">2</span><span class="sc">:</span><span class="dv">4</span>] <span class="ot">=</span> <span class="fu">apply</span>(zinb_res[,<span class="dv">2</span><span class="sc">:</span><span class="dv">4</span>], <span class="dv">2</span>, as.numeric)</span>
+<span id="cb25-13"><a href="#cb25-13" tabindex="-1"></a>zinb_res<span class="sc">$</span>outlier <span class="ot">=</span> <span class="fu">ifelse</span>(<span class="fu">log10</span>(zinb_res<span class="sc">$</span>alpha)<span class="sc">&gt;</span>(<span class="fu">quantile</span>(<span class="fu">log10</span>(zinb_res<span class="sc">$</span>alpha), <span class="fl">0.75</span>)<span class="sc">+</span><span class="dv">2</span><span class="sc">*</span><span class="fu">IQR</span>(<span class="fu">log10</span>(zinb_res<span class="sc">$</span>alpha))), <span class="dv">1</span>, <span class="dv">0</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="co"># fit the kernel regression</span></span>
+<span id="cb26-2"><a href="#cb26-2" tabindex="-1"></a>vanilla<span class="sc">$</span>up <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(<span class="fu">log10</span>(vanilla<span class="sc">$</span>alpha)<span class="sc">&gt;</span><span class="fl">2.5</span>, <span class="st">&quot;upper&quot;</span>,<span class="st">&quot;lower&quot;</span>)</span>
+<span id="cb26-3"><a href="#cb26-3" tabindex="-1"></a>marginal_fit_PNAS_sel <span class="ot">&lt;-</span> vanilla[vanilla<span class="sc">$</span>up<span class="sc">==</span><span class="st">&quot;lower&quot;</span>,]</span>
+<span id="cb26-4"><a href="#cb26-4" tabindex="-1"></a>km5 <span class="ot">&lt;-</span> <span class="fu">ksmooth</span>(<span class="fu">log10</span>(marginal_fit_PNAS_sel<span class="sc">$</span>mu), <span class="fu">log10</span>(marginal_fit_PNAS_sel<span class="sc">$</span>alpha),</span>
+<span id="cb26-5"><a href="#cb26-5" tabindex="-1"></a>               <span class="at">kernel=</span><span class="st">&quot;normal&quot;</span>, <span class="at">bandwidth =</span> <span class="fu">bw.SJ</span>(<span class="fu">log10</span>(marginal_fit_PNAS_sel<span class="sc">$</span>mu))<span class="sc">*</span><span class="dv">5</span>)</span>
+<span id="cb26-6"><a href="#cb26-6" tabindex="-1"></a></span>
+<span id="cb26-7"><a href="#cb26-7" tabindex="-1"></a>mu <span class="ot">&lt;-</span> vanilla<span class="sc">$</span>mu</span>
+<span id="cb26-8"><a href="#cb26-8" tabindex="-1"></a>gene_name <span class="ot">&lt;-</span> vanilla<span class="sc">$</span>gene</span>
+<span id="cb26-9"><a href="#cb26-9" tabindex="-1"></a><span class="fu">names</span>(mu) <span class="ot">&lt;-</span> gene_name</span>
+<span id="cb26-10"><a href="#cb26-10" tabindex="-1"></a>log10mu <span class="ot">=</span> <span class="fu">log10</span>(mu)</span>
+<span id="cb26-11"><a href="#cb26-11" tabindex="-1"></a></span>
+<span id="cb26-12"><a href="#cb26-12" tabindex="-1"></a>fitted_trend <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">mu=</span>km5<span class="sc">$</span>x, <span class="at">alpha=</span>km5<span class="sc">$</span>y)</span>
+<span id="cb26-13"><a href="#cb26-13" tabindex="-1"></a>log10alpha <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(vanilla))</span>
+<span id="cb26-14"><a href="#cb26-14" tabindex="-1"></a><span class="fu">names</span>(log10alpha) <span class="ot">&lt;-</span> vanilla<span class="sc">$</span>gene</span>
+<span id="cb26-15"><a href="#cb26-15" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(vanilla)){</span>
+<span id="cb26-16"><a href="#cb26-16" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="fu">which.min</span>(<span class="fu">abs</span>(log10mu[i]<span class="sc">-</span>fitted_trend<span class="sc">$</span>mu))</span>
+<span id="cb26-17"><a href="#cb26-17" tabindex="-1"></a>  log10alpha[i] <span class="ot">&lt;-</span> fitted_trend<span class="sc">$</span>alpha[idx]</span>
+<span id="cb26-18"><a href="#cb26-18" tabindex="-1"></a>}</span>
+<span id="cb26-19"><a href="#cb26-19" tabindex="-1"></a>alpha <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span>log10alpha</span>
+<span id="cb26-20"><a href="#cb26-20" tabindex="-1"></a></span>
+<span id="cb26-21"><a href="#cb26-21" tabindex="-1"></a></span>
+<span id="cb26-22"><a href="#cb26-22" tabindex="-1"></a>marginal_fit_zinb <span class="ot">&lt;-</span> zinb_res[zinb_res<span class="sc">$</span>outlier<span class="sc">==</span><span class="dv">0</span>,]</span>
+<span id="cb26-23"><a href="#cb26-23" tabindex="-1"></a>km5_zinb <span class="ot">&lt;-</span> <span class="fu">ksmooth</span>(<span class="fu">log10</span>(marginal_fit_zinb<span class="sc">$</span>mu), <span class="fu">log10</span>(marginal_fit_zinb<span class="sc">$</span>alpha),</span>
+<span id="cb26-24"><a href="#cb26-24" tabindex="-1"></a>               <span class="at">kernel=</span><span class="st">&quot;normal&quot;</span>, <span class="at">bandwidth =</span> <span class="fu">bw.SJ</span>(<span class="fu">log10</span>(marginal_fit_zinb<span class="sc">$</span>mu))<span class="sc">*</span><span class="dv">5</span>)</span>
+<span id="cb26-25"><a href="#cb26-25" tabindex="-1"></a></span>
+<span id="cb26-26"><a href="#cb26-26" tabindex="-1"></a>mu_zinb <span class="ot">&lt;-</span> zinb_res<span class="sc">$</span>mu</span>
+<span id="cb26-27"><a href="#cb26-27" tabindex="-1"></a>gene_name_zinb <span class="ot">&lt;-</span> zinb_res<span class="sc">$</span>gene</span>
+<span id="cb26-28"><a href="#cb26-28" tabindex="-1"></a><span class="fu">names</span>(mu_zinb) <span class="ot">&lt;-</span> gene_name_zinb</span>
+<span id="cb26-29"><a href="#cb26-29" tabindex="-1"></a>log10mu_zinb <span class="ot">=</span> <span class="fu">log10</span>(mu_zinb)</span>
+<span id="cb26-30"><a href="#cb26-30" tabindex="-1"></a></span>
+<span id="cb26-31"><a href="#cb26-31" tabindex="-1"></a>fitted_trend_zinb <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">mu=</span>km5_zinb<span class="sc">$</span>x, <span class="at">alpha=</span>km5_zinb<span class="sc">$</span>y)</span>
+<span id="cb26-32"><a href="#cb26-32" tabindex="-1"></a>log10alpha_zinb <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="cn">NA</span>,<span class="fu">nrow</span>(zinb_res))</span>
+<span id="cb26-33"><a href="#cb26-33" tabindex="-1"></a><span class="fu">names</span>(log10alpha_zinb) <span class="ot">&lt;-</span> zinb_res<span class="sc">$</span>gene</span>
+<span id="cb26-34"><a href="#cb26-34" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(zinb_res)){</span>
+<span id="cb26-35"><a href="#cb26-35" tabindex="-1"></a>  idx <span class="ot">&lt;-</span> <span class="fu">which.min</span>(<span class="fu">abs</span>(log10mu_zinb[i]<span class="sc">-</span>fitted_trend_zinb<span class="sc">$</span>mu))</span>
+<span id="cb26-36"><a href="#cb26-36" tabindex="-1"></a>  log10alpha_zinb[i] <span class="ot">&lt;-</span> fitted_trend_zinb<span class="sc">$</span>alpha[idx]</span>
+<span id="cb26-37"><a href="#cb26-37" tabindex="-1"></a>}</span>
+<span id="cb26-38"><a href="#cb26-38" tabindex="-1"></a>alpha_zinb <span class="ot">&lt;-</span> <span class="dv">10</span><span class="sc">^</span>log10alpha_zinb</span>
+<span id="cb26-39"><a href="#cb26-39" tabindex="-1"></a></span>
+<span id="cb26-40"><a href="#cb26-40" tabindex="-1"></a>alpha_comb <span class="ot">=</span> <span class="fu">c</span>(alpha, alpha_zinb)</span>
+<span id="cb26-41"><a href="#cb26-41" tabindex="-1"></a>mu_comb <span class="ot">=</span> <span class="fu">c</span>(mu, mu_zinb)</span></code></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" tabindex="-1"></a>zero_inflated_gene <span class="ot">=</span> zinb_res<span class="sc">$</span>gene</span>
+<span id="cb27-2"><a href="#cb27-2" tabindex="-1"></a>zero_inflated_p <span class="ot">=</span> zinb_res<span class="sc">$</span>zero_prop</span></code></pre></div>
+</div>
+<div id="estimate-correlation-structure" class="section level2">
+<h2>Estimate correlation structure</h2>
+<p>For best results, we recommend that users provide their own
+pre-estimated correlation structure. This is an alternative to the
+function’s default method (CS-CORE), which estimates the structure using
+a negative binomial model.</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a><span class="co"># generate gene cor mat</span></span>
+<span id="cb28-2"><a href="#cb28-2" tabindex="-1"></a>genes <span class="ot">=</span> <span class="fu">rownames</span>(ct_counts)</span>
+<span id="cb28-3"><a href="#cb28-3" tabindex="-1"></a>ensg_ids <span class="ot">&lt;-</span> <span class="fu">sapply</span>(<span class="fu">strsplit</span>(genes, <span class="st">&quot;_&quot;</span>), <span class="cf">function</span>(x) x[<span class="dv">1</span>])</span>
+<span id="cb28-4"><a href="#cb28-4" tabindex="-1"></a></span>
+<span id="cb28-5"><a href="#cb28-5" tabindex="-1"></a>ensembl <span class="ot">&lt;-</span> <span class="fu">useMart</span>(<span class="st">&quot;ensembl&quot;</span>, <span class="at">dataset =</span> <span class="st">&quot;hsapiens_gene_ensembl&quot;</span>)</span>
+<span id="cb28-6"><a href="#cb28-6" tabindex="-1"></a>gene_lengths <span class="ot">&lt;-</span> <span class="fu">getBM</span>(<span class="at">attributes =</span> <span class="fu">c</span>(<span class="st">&#39;ensembl_gene_id&#39;</span>, <span class="st">&#39;transcript_length&#39;</span>),</span>
+<span id="cb28-7"><a href="#cb28-7" tabindex="-1"></a>                      <span class="at">filters =</span> <span class="st">&#39;ensembl_gene_id&#39;</span>,</span>
+<span id="cb28-8"><a href="#cb28-8" tabindex="-1"></a>                      <span class="at">values =</span> ensg_ids,</span>
+<span id="cb28-9"><a href="#cb28-9" tabindex="-1"></a>                      <span class="at">mart =</span> ensembl)</span>
+<span id="cb28-10"><a href="#cb28-10" tabindex="-1"></a></span>
+<span id="cb28-11"><a href="#cb28-11" tabindex="-1"></a>gene_info <span class="ot">&lt;-</span> gene_lengths <span class="sc">%&gt;%</span></span>
+<span id="cb28-12"><a href="#cb28-12" tabindex="-1"></a>  <span class="fu">group_by</span>(ensembl_gene_id) <span class="sc">%&gt;%</span></span>
+<span id="cb28-13"><a href="#cb28-13" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">length =</span> <span class="fu">mean</span>(transcript_length))</span>
+<span id="cb28-14"><a href="#cb28-14" tabindex="-1"></a></span>
+<span id="cb28-15"><a href="#cb28-15" tabindex="-1"></a>calculate_tpm <span class="ot">&lt;-</span> <span class="cf">function</span>(counts, lengths) {</span>
+<span id="cb28-16"><a href="#cb28-16" tabindex="-1"></a>  <span class="co"># Ensure lengths are in kilobases</span></span>
+<span id="cb28-17"><a href="#cb28-17" tabindex="-1"></a>  lengths_kb <span class="ot">&lt;-</span> lengths <span class="sc">/</span> <span class="dv">1000</span></span>
+<span id="cb28-18"><a href="#cb28-18" tabindex="-1"></a>  </span>
+<span id="cb28-19"><a href="#cb28-19" tabindex="-1"></a>  <span class="co"># 1. Normalize for gene length</span></span>
+<span id="cb28-20"><a href="#cb28-20" tabindex="-1"></a>  rpk <span class="ot">&lt;-</span> counts <span class="sc">/</span> lengths_kb</span>
+<span id="cb28-21"><a href="#cb28-21" tabindex="-1"></a>  <span class="co"># 2. Normalize for sequencing depth</span></span>
+<span id="cb28-22"><a href="#cb28-22" tabindex="-1"></a>  per_million_scaling_factor <span class="ot">&lt;-</span> <span class="fu">colSums</span>(rpk) <span class="sc">/</span> <span class="fl">1e6</span></span>
+<span id="cb28-23"><a href="#cb28-23" tabindex="-1"></a>  tpm <span class="ot">&lt;-</span> <span class="fu">sweep</span>(rpk, <span class="dv">2</span>, per_million_scaling_factor, <span class="st">&quot;/&quot;</span>)</span>
+<span id="cb28-24"><a href="#cb28-24" tabindex="-1"></a>  <span class="fu">return</span>(tpm)</span>
+<span id="cb28-25"><a href="#cb28-25" tabindex="-1"></a>}</span>
+<span id="cb28-26"><a href="#cb28-26" tabindex="-1"></a></span>
+<span id="cb28-27"><a href="#cb28-27" tabindex="-1"></a><span class="co"># mean expression level under each cell type</span></span>
+<span id="cb28-28"><a href="#cb28-28" tabindex="-1"></a>sel_genes <span class="ot">=</span> <span class="fu">sapply</span>(<span class="fu">strsplit</span>(<span class="fu">rownames</span>(ct_counts), <span class="st">&quot;_&quot;</span>), <span class="cf">function</span>(x) x[<span class="dv">1</span>])</span>
+<span id="cb28-29"><a href="#cb28-29" tabindex="-1"></a>matched_lengths <span class="ot">&lt;-</span> gene_info<span class="sc">$</span>length[<span class="fu">match</span>(sel_genes, gene_info<span class="sc">$</span>ensembl_gene_id)]</span>
+<span id="cb28-30"><a href="#cb28-30" tabindex="-1"></a><span class="co"># Calculate TPM, removing genes with no length information</span></span>
+<span id="cb28-31"><a href="#cb28-31" tabindex="-1"></a>valid_genes <span class="ot">&lt;-</span> <span class="sc">!</span><span class="fu">is.na</span>(matched_lengths)</span>
+<span id="cb28-32"><a href="#cb28-32" tabindex="-1"></a>tpm_matrix <span class="ot">&lt;-</span> <span class="fu">calculate_tpm</span>(ct_counts[valid_genes, ], matched_lengths[valid_genes])</span>
+<span id="cb28-33"><a href="#cb28-33" tabindex="-1"></a>log_tpm_matrix <span class="ot">&lt;-</span> <span class="fu">log1p</span>(tpm_matrix)</span>
+<span id="cb28-34"><a href="#cb28-34" tabindex="-1"></a>log_tpm_matrix <span class="ot">=</span> <span class="fu">as.matrix</span>(log_tpm_matrix)</span>
+<span id="cb28-35"><a href="#cb28-35" tabindex="-1"></a></span>
+<span id="cb28-36"><a href="#cb28-36" tabindex="-1"></a>mean_exp <span class="ot">=</span> <span class="fu">rowMeans</span>(log_tpm_matrix)</span>
+<span id="cb28-37"><a href="#cb28-37" tabindex="-1"></a>mean_exp <span class="ot">=</span> mean_exp[<span class="fu">order</span>(mean_exp, <span class="at">decreasing=</span>T)]</span>
+<span id="cb28-38"><a href="#cb28-38" tabindex="-1"></a>smart_high_exp <span class="ot">=</span> <span class="fu">names</span>(mean_exp)[<span class="dv">1</span><span class="sc">:</span><span class="dv">1000</span>]</span>
+<span id="cb28-39"><a href="#cb28-39" tabindex="-1"></a>cor_mat <span class="ot">=</span> <span class="fu">cor</span>(<span class="fu">t</span>(log_tpm_matrix[smart_high_exp,]))</span></code></pre></div>
+</div>
+<div id="simulate-independent-data-1" class="section level2">
+<h2>Simulate independent data</h2>
+<div class="sourceCode" id="cb29"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" tabindex="-1"></a>smart_simu <span class="ot">=</span> <span class="fu">scSimu_ZINB</span>(mu_comb, alpha_comb, zero_inflated_gene, zero_inflated_p,</span>
+<span id="cb29-2"><a href="#cb29-2" tabindex="-1"></a>                        <span class="at">count_dat=</span>ct_counts, <span class="at">IND=</span>T, <span class="at">seed=</span><span class="dv">7232024</span>)</span></code></pre></div>
+</div>
+<div id="simulate-correlated-data-1" class="section level2">
+<h2>Simulate correlated data</h2>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a>smart_simu <span class="ot">=</span> <span class="fu">scSimu_ZINB</span>(mu_comb, alpha_comb, zero_inflated_gene, zero_inflated_p,</span>
+<span id="cb30-2"><a href="#cb30-2" tabindex="-1"></a>                        <span class="at">count_dat=</span>ct_counts, <span class="at">IND=</span>F, <span class="at">cor_mat=</span>cor_mat, <span class="at">seed=</span><span class="dv">7232024</span>)</span>
+<span id="cb30-3"><a href="#cb30-3" tabindex="-1"></a><span class="co">#&gt; &lt;simpleError in chol.default(cor_mat): the leading minor of order 117 is not positive&gt;</span></span>
+<span id="cb30-4"><a href="#cb30-4" tabindex="-1"></a><span class="co">#&gt; [1] &quot;The correlation matrix is not positive semi-definite. Use eigen decomposition.&quot;</span></span></code></pre></div>
+</div>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

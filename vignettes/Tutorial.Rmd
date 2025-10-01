@@ -16,6 +16,8 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 # Install scSimu and related packages
+library(fastmap)
+
 if (!requireNamespace("scSimu", quietly = TRUE)){
   devtools::install_github("xs222/scSimu")
 }
@@ -27,6 +29,7 @@ if (!requireNamespace("glmGamPoi", quietly = TRUE)){
 if (!requireNamespace("CSCORE", quietly = TRUE)){
   devtools::install_github("ChangSuBiostats/CS-CORE") 
 }
+
 if (!requireNamespace("SeuratData", quietly = TRUE)){
   devtools::install_github('satijalab/seurat-data')
 }
@@ -158,10 +161,6 @@ if (!requireNamespace("pscl", quietly = TRUE)){
 
 We use Smart-Seq data from <https://www.nature.com/articles/s41587-020-0465-8>.
 
-```{r, echo=FALSE}
-path = "/gpfs/gibbs/pi/zhao/xs282/validation/revision/"
-```
-
 ```{r}
 library(Matrix)
 library(dplyr)
@@ -170,10 +169,10 @@ library(glmGamPoi)
 ```
 
 ```{r}
-count_data = readMM(paste0(path,"smart_seq_data/counts.read.txt"))
-cells = read.table(paste0(path,"smart_seq_data/cells.read.new.txt"))
-genes = read.table(paste0(path,"smart_seq_data/genes.read.txt"))
-meta = read.table(paste0(path,"smart_seq_data/meta.txt"), sep = "\t", header=T)
+count_data = readMM(paste0("C:/Users/15177/Downloads/counts.read.txt"))
+cells = read.table(paste0("C:/Users/15177/Downloads/cells.read.new.txt"))
+genes = read.table(paste0("C:/Users/15177/Downloads/genes.read.txt"))
+meta = read.table(paste0("C:/Users/15177/Downloads/meta.txt"), sep = "\t", header=T)
 colnames(count_data) = cells$V1
 rownames(count_data) = genes$V1
 meta_sub = meta[meta$Method=="Smart-seq2" & meta$Experiment=="pbmc1",]
