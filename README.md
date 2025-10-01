@@ -9,4 +9,4 @@ scSimu is an R package used to simulate drop-seq scRNA-seq count data from real 
 [tutorial]: https://github.com/xs222/scSimu/blob/master/vignettes/Tutorial.html
 
 ## Reference
-Shan, X., Zhao, H.: Inferring Cell-Type-Specific Co-Expressed Genes from Single Cell Data.
+Shan, X., Zhao, H.: A Unified Framework for Selecting and Evaluating Cell-Type-Specific Gene Co-expressions in Single-Cell Data.
