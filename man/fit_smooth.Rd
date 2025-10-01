@@ -12,10 +12,10 @@ fit_smooth(marginal_para)
 \value{
 A data.frame containing:
 \itemize{
-  \item \code{gene}: Gene name
-  \item \code{mu}: The mean expression level of gene on log10 scale
-  \item \code{alpha}: The shape parameter of gene for the Gamma distribution on log10 scale
-  \item \code{deviances}: Deviance of the fit
+\item \code{gene}: Gene name
+\item \code{mu}: The mean expression level of gene on log10 scale
+\item \code{alpha}: The shape parameter of gene for the Gamma distribution on log10 scale
+\item \code{deviances}: Deviance of the fit
 }
 }
 \description{

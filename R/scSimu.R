@@ -1,6 +1,6 @@
-#' Simulate drop-seq scRNA count data
+#' Simulate droplet-based scRNA count data
 #'
-#' This function simulates Drop-seq scRNA count data using negative binomial distribution.
+#' This function simulates droplet-based scRNA count data using negative binomial distribution. Dependencies between genes are modeled via a Gaussian copula.
 #' The input can be a count matrix with gene mean expression level and dispersion parameter or user defined parameters.
 #'
 #' @param mu A vector contains gene mean expression level.
@@ -52,9 +52,8 @@ scSimu <- function(mu, alpha, count_dat=NULL, gene_name=NULL, cell_name=NULL, se
     }
 
     simu_count <- NB_copula(gene_name, cell_name, seq_depth, mu, alpha,IND, cor_mat, seed)
-
-
   }
+  return(simu_count)
 }
 
 MatrixBH <- function(p_matrix){
@@ -75,7 +74,7 @@ NB_copula <- function(gene_name, cell_name, seq_depth, mu, alpha,
   beta <- mu/alpha
 
   ###### generate independent expression matrix based on gamma(alpha, beta) ######
-  exp_mat <- matrix(rgamma(ngene*ncell, shape = rep(alpha,ncell),
+  exp_mat <- matrix(rgamma(as.numeric(ngene)*ncell, shape = rep(alpha,ncell),
                            scale = rep(beta,ncell)), nrow = ngene)
   colnames(exp_mat) <- cell_name
   rownames(exp_mat) <- gene_name
@@ -105,7 +104,7 @@ NB_copula <- function(gene_name, cell_name, seq_depth, mu, alpha,
   ################ generate count matrix by draw from poisson ####################
   seq_depth_matrix <- matrix(seq_depth, nrow = ngene, ncol = ncell, byrow = T)
   pois_para <- exp_mat*seq_depth_matrix
-  count_mat <- matrix(rpois(ngene*ncell, lambda = c(pois_para)), nrow=ngene)
+  count_mat <- matrix(rpois(as.numeric(ngene)*ncell, lambda = c(pois_para)), nrow=ngene)
   colnames(count_mat) <- cell_name
   rownames(count_mat) <- gene_name
   return(count_mat)

@@ -27,12 +27,17 @@ if (!requireNamespace("glmGamPoi", quietly = TRUE)){
 if (!requireNamespace("CSCORE", quietly = TRUE)){
   devtools::install_github("ChangSuBiostats/CS-CORE") 
 }
+if (!requireNamespace("SeuratData", quietly = TRUE)){
+  devtools::install_github('satijalab/seurat-data')
+}
 
 # load package
 library(scSimu)
 ```
 
-# Load data
+# Simulating droplet-based data
+
+## Load data
 
 Here we utilize the T cells from 2,700 PBMC from Seurat.
 
@@ -54,7 +59,7 @@ pbmc3k.T <- subset(pbmc3k.final, subset = seurat_annotations %in% c("Naive CD4 T
 pbmc3k.T
 ```
 
-# Estimate marginal parameters
+## Estimate marginal parameters
 
 ```{r}
 pbmc3k_count <- as.matrix(GetAssayData(object = pbmc3k.T, slot = "counts"))
@@ -111,14 +116,13 @@ for (i in 1:nrow(marginal_para)){
 alpha <- 10^log10alpha
 ```
 
-
-# Simulate independent data
+## Simulate independent data
 
 ```{r}
 simu_ind <- scSimu(mu, alpha, pbmc3k_count)
 ```
 
-# Simulate correlated data
+## Simulate correlated data
 
 Consider the correlation structure for highly expressed genes.
 
@@ -128,5 +132,246 @@ cor_gene <- marginal_para$gene[1:500]
 simu_cor <- scSimu(mu, alpha, pbmc3k_count, IND = F, cor_gene = cor_gene)
 ```
 
+# Simulating Smart-Seq data
+
+```{r}
+# Install related packages
+if (!requireNamespace("biomaRt", quietly = TRUE)){
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+  BiocManager::install("biomaRt")
+}
+if (!requireNamespace("Matrix", quietly = TRUE)){
+  install.packages("Matrix")
+}
+
+if (!requireNamespace("MASS", quietly = TRUE)){
+  install.packages("MASS")
+}
+if (!requireNamespace("pscl", quietly = TRUE)){
+  install.packages("pscl")
+}
+
+```
+
+## Load data
+
+We use Smart-Seq data from <https://www.nature.com/articles/s41587-020-0465-8>.
+
+```{r, echo=FALSE}
+path = "/gpfs/gibbs/pi/zhao/xs282/validation/revision/"
+```
+
+```{r}
+library(Matrix)
+library(dplyr)
+library(biomaRt)
+library(glmGamPoi)
+```
+
+```{r}
+count_data = readMM(paste0(path,"smart_seq_data/counts.read.txt"))
+cells = read.table(paste0(path,"smart_seq_data/cells.read.new.txt"))
+genes = read.table(paste0(path,"smart_seq_data/genes.read.txt"))
+meta = read.table(paste0(path,"smart_seq_data/meta.txt"), sep = "\t", header=T)
+colnames(count_data) = cells$V1
+rownames(count_data) = genes$V1
+meta_sub = meta[meta$Method=="Smart-seq2" & meta$Experiment=="pbmc1",]
+
+ct = "Cytotoxic T cell"
+cell_name = meta_sub$NAME[meta_sub$CellType==ct]
+count_sub = count_data[,cell_name]
+count_sub = as.matrix(count_sub)
+
+# filter genes
+gene_idx = which((rowSums(count_sub)>=10) & (rowSums(count_sub>=1)>=10))
+nrow(count_sub)-length(gene_idx)
+ct_counts = count_sub[gene_idx,]
+dim(ct_counts)
+```
+
+## Identify genes with zero inflation
+
+This is based on the procedures in scDesign2.
+
+```{r, message = FALSE, warning = FALSE, error = FALSE}
+check_marginal_fit = function(gene){
+    library(pscl)
+    library(MASS)
+    m <- mean(gene)
+    v <- var(gene)
+    if(m >= v){
+        mle_Poisson <- glm(gene ~ 1, family = poisson)
+        res = tryCatch({
+          mle_ZIP <- zeroinfl(gene ~ 1|1, dist = 'poisson')
+          chisq_val <- 2 * (logLik(mle_ZIP) - logLik(mle_Poisson))
+          pvalue = as.numeric(1 - pchisq(chisq_val, 1))
+          c(pvalue,0, ifelse(pvalue<0.05, "ZIP", "Poisson"))
+        }, error = function(cond){c(1,0, "Poisson")})
+    }else{
+        res = tryCatch({
+                mle_NB <- glm.nb(gene ~ 1)
+                tryCatch({
+                    mle_ZINB <- zeroinfl(gene ~ 1|1, dist = 'negbin')
+                    chisq_val <- 2 * (logLik(mle_ZINB) - logLik(mle_NB))
+                    pvalue = as.numeric(1 - pchisq(chisq_val, 1))
+                    c(0, pvalue, ifelse(pvalue<0.05, "ZINB", "NB"))
+                }, error = function(cond){c(0, 1, "NB")})
+             }, warning = function(w) {
+                 tryCatch({
+                    mle_ZINB <- zeroinfl(gene ~ 1|1, dist = 'negbin')
+                    chisq_val <- 2 * (logLik(mle_ZINB) - logLik(mle_NB))
+                    pvalue = as.numeric(1 - pchisq(chisq_val, 1))
+                    c(0, pvalue, ifelse(pvalue<0.05, "ZINB", "NB"))
+                }, error = function(cond){c(0, 1, "NB")})
+             })
+    }
+    return(res)
+}
+
+p_gene = list()
+for (i in rownames(ct_counts)){
+    gene = ct_counts[i,]
+    p_gene[[i]] = check_marginal_fit(gene)
+}
+p = do.call(rbind, p_gene)
+colnames(p) = c("Poisson", "NB","group")
+p = as.data.frame(p)
+p$gene = rownames(p)
+
+ZINB_genes = p$gene[p$group %in% c("ZINB", "ZIP")]
+other_genes = setdiff(p$gene, ZINB_genes)
+
+```
+
+## Estimate marginal parameters
+
+we use a Gamma-Poisson GLM for non-zero-inflated genes and a zero-inflated model for zero-inflated genes.
+
+```{r}
+## estimate non-zero inflated genes
+gp_ex <- glm_gp(ct_counts[other_genes,], size_factors = colSums(ct_counts), verbose = T, overdispersion_shrinkage = T, do_cox_reid_adjustment = T)
+vanilla <- data.frame(mu = exp(gp_ex$Beta[,1]), alpha = 1/gp_ex$overdispersions, gene=other_genes)
+
+## estimate zero inflated genes
+zinb_res = as.data.frame(matrix(nrow=length(ZINB_genes), ncol=4))
+colnames(zinb_res) = c("gene", "zero_prop", "alpha", "mu")
+rownames(zinb_res) = ZINB_genes
+for (g in ZINB_genes){
+    df <- data.frame(counts = ct_counts[g,], library_size = log(colSums(ct_counts)))
+    fit_ZINB <- zeroinfl(counts ~ 1+offset(library_size)|1, dist = 'negbin', data=df)
+    zinb_res[g,] = c(g, plogis(fit_ZINB$coefficients$zero), fit_ZINB$theta, exp(fit_ZINB$coefficients$count))
+}
+zinb_res[,2:4] = apply(zinb_res[,2:4], 2, as.numeric)
+zinb_res$outlier = ifelse(log10(zinb_res$alpha)>(quantile(log10(zinb_res$alpha), 0.75)+2*IQR(log10(zinb_res$alpha))), 1, 0)
+
+```
+
+```{r}
+# fit the kernel regression
+vanilla$up <- ifelse(log10(vanilla$alpha)>2.5, "upper","lower")
+marginal_fit_PNAS_sel <- vanilla[vanilla$up=="lower",]
+km5 <- ksmooth(log10(marginal_fit_PNAS_sel$mu), log10(marginal_fit_PNAS_sel$alpha),
+               kernel="normal", bandwidth = bw.SJ(log10(marginal_fit_PNAS_sel$mu))*5)
+
+mu <- vanilla$mu
+gene_name <- vanilla$gene
+names(mu) <- gene_name
+log10mu = log10(mu)
+
+fitted_trend <- data.frame(mu=km5$x, alpha=km5$y)
+log10alpha <- rep(NA,nrow(vanilla))
+names(log10alpha) <- vanilla$gene
+for (i in 1:nrow(vanilla)){
+  idx <- which.min(abs(log10mu[i]-fitted_trend$mu))
+  log10alpha[i] <- fitted_trend$alpha[idx]
+}
+alpha <- 10^log10alpha
 
 
+marginal_fit_zinb <- zinb_res[zinb_res$outlier==0,]
+km5_zinb <- ksmooth(log10(marginal_fit_zinb$mu), log10(marginal_fit_zinb$alpha),
+               kernel="normal", bandwidth = bw.SJ(log10(marginal_fit_zinb$mu))*5)
+
+mu_zinb <- zinb_res$mu
+gene_name_zinb <- zinb_res$gene
+names(mu_zinb) <- gene_name_zinb
+log10mu_zinb = log10(mu_zinb)
+
+fitted_trend_zinb <- data.frame(mu=km5_zinb$x, alpha=km5_zinb$y)
+log10alpha_zinb <- rep(NA,nrow(zinb_res))
+names(log10alpha_zinb) <- zinb_res$gene
+for (i in 1:nrow(zinb_res)){
+  idx <- which.min(abs(log10mu_zinb[i]-fitted_trend_zinb$mu))
+  log10alpha_zinb[i] <- fitted_trend_zinb$alpha[idx]
+}
+alpha_zinb <- 10^log10alpha_zinb
+
+alpha_comb = c(alpha, alpha_zinb)
+mu_comb = c(mu, mu_zinb)
+```
+
+```{r}
+zero_inflated_gene = zinb_res$gene
+zero_inflated_p = zinb_res$zero_prop
+```
+
+## Estimate correlation structure
+
+For best results, we recommend that users provide their own pre-estimated correlation structure. This is an alternative to the function's default method (CS-CORE), which estimates the structure using a negative binomial model.
+
+```{r}
+# generate gene cor mat
+genes = rownames(ct_counts)
+ensg_ids <- sapply(strsplit(genes, "_"), function(x) x[1])
+
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+gene_lengths <- getBM(attributes = c('ensembl_gene_id', 'transcript_length'),
+                      filters = 'ensembl_gene_id',
+                      values = ensg_ids,
+                      mart = ensembl)
+
+gene_info <- gene_lengths %>%
+  group_by(ensembl_gene_id) %>%
+  summarise(length = mean(transcript_length))
+
+calculate_tpm <- function(counts, lengths) {
+  # Ensure lengths are in kilobases
+  lengths_kb <- lengths / 1000
+  
+  # 1. Normalize for gene length
+  rpk <- counts / lengths_kb
+  # 2. Normalize for sequencing depth
+  per_million_scaling_factor <- colSums(rpk) / 1e6
+  tpm <- sweep(rpk, 2, per_million_scaling_factor, "/")
+  return(tpm)
+}
+
+# mean expression level under each cell type
+sel_genes = sapply(strsplit(rownames(ct_counts), "_"), function(x) x[1])
+matched_lengths <- gene_info$length[match(sel_genes, gene_info$ensembl_gene_id)]
+# Calculate TPM, removing genes with no length information
+valid_genes <- !is.na(matched_lengths)
+tpm_matrix <- calculate_tpm(ct_counts[valid_genes, ], matched_lengths[valid_genes])
+log_tpm_matrix <- log1p(tpm_matrix)
+log_tpm_matrix = as.matrix(log_tpm_matrix)
+
+mean_exp = rowMeans(log_tpm_matrix)
+mean_exp = mean_exp[order(mean_exp, decreasing=T)]
+smart_high_exp = names(mean_exp)[1:1000]
+cor_mat = cor(t(log_tpm_matrix[smart_high_exp,]))
+```
+
+## Simulate independent data
+
+```{r}
+smart_simu = scSimu_ZINB(mu_comb, alpha_comb, zero_inflated_gene, zero_inflated_p,
+                        count_dat=ct_counts, IND=T, seed=7232024)
+```
+
+## Simulate correlated data
+
+```{r}
+smart_simu = scSimu_ZINB(mu_comb, alpha_comb, zero_inflated_gene, zero_inflated_p,
+                        count_dat=ct_counts, IND=F, cor_mat=cor_mat, seed=7232024)
+```
